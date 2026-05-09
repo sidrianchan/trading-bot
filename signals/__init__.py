@@ -1,6 +1,26 @@
-"""Technical-analysis signal layer.
+"""Technical-analysis signal layer."""
+from signals.scoring import (
+    DEFAULT_WEIGHTS,
+    ScoreCard,
+    score_setup,
+    passes_threshold,
+)
+from signals.setup import (
+    Direction,
+    HoldType,
+    SetupEngine,
+    SetupEngineConfig,
+    TradeSetup,
+)
 
-Public API populated during Phase B (detectors) and Phase C (scoring + setup
-engine). Intentionally empty during Phase A so callers of the legacy stack
-fail loudly instead of silently picking up stale classes.
-"""
+__all__ = [
+    "DEFAULT_WEIGHTS",
+    "ScoreCard",
+    "score_setup",
+    "passes_threshold",
+    "Direction",
+    "HoldType",
+    "SetupEngine",
+    "SetupEngineConfig",
+    "TradeSetup",
+]
