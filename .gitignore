@@ -19,9 +19,12 @@ ruvector.db
 # OS
 .DS_Store
 
-# Logs
-logs/
+# Logs — keep structure markers, ignore runtime output
+logs/*
 !logs/.gitkeep
+!logs/daily/
+logs/daily/*
+!logs/daily/.gitkeep
 
 # Generated artifacts
 backtest_results.png
