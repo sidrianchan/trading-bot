@@ -77,8 +77,12 @@ ta:
       rsi: 15
       macd: 10
       volume: 10
-    threshold: 65                  # composite score required to trigger a setup
+    threshold: 70                  # composite score required to trigger a setup
     top_n_per_day: 5               # only act on the top-N setups by score
+
+  anti_churn:
+    max_trades_per_ticker_per_day: 2   # hard cap on entries per name per session
+    cooldown_bars_after_stop: 20       # 15-min bars; 20 = 5 hours of no re-entry
 
   exits:
     target1_r: 1.0                 # 1:1 R:R — first profit leg

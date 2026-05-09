@@ -39,6 +39,10 @@ class TABacktestConfig:
     cancel_after_bars: int = 2       # cancel limit if unfilled within N 15-min bars
     fill_unfilled_as_market: bool = False
 
+    # Anti-churn (carried from the old VWAP engine + tightened)
+    max_trades_per_ticker_per_day: int = 2
+    cooldown_bars_after_stop: int = 20    # 15-min bars; 20 = 5 hours
+
     # Exits
     target1_r: float = 1.0
     target1_pct: float = 0.40
@@ -214,11 +218,14 @@ class TABacktester:
 
         spread_cost = lambda px: px * cfg.spread_bps / 10_000.0  # noqa: E731
 
-        seen_setup_for_ticker_today: dict[str, int] = {}  # ticker → bars elapsed since trigger
         last_close_per_ticker: dict[str, float] = {}      # last seen close per ticker today
         hard_closed_today = False                         # one-shot flush at 15:30
+        trades_today_per_ticker: dict[str, int] = {}      # entries opened today
+        last_stop_bar_per_ticker: dict[str, int] = {}     # bar index of most recent stop
+        bar_count = 0                                     # monotonic per-day bar counter
 
         for ts, ticker, bar in timeline:
+            bar_count += 1
             ts_et = ts.tz_convert("America/New_York") if ts.tz is not None else ts
             time_str = ts_et.strftime("%H:%M") if hasattr(ts_et, "strftime") else "00:00"
 
@@ -226,6 +233,17 @@ class TABacktester:
             # mark every position to its OWN last seen price (not whichever
             # ticker happens to be on the current timeline iteration).
             last_close_per_ticker[ticker] = bar["close"]
+
+            # Daily P&L halt: once realized losses cross the threshold,
+            # block new entries for the rest of the session.
+            if not daily_halt:
+                day_pnl = self._capital - starting_capital
+                if day_pnl <= cfg.daily_pnl_halt_pct * starting_capital:
+                    daily_halt = True
+                    logger.debug(
+                        f"{trading_date}  daily halt tripped at "
+                        f"P&L=${day_pnl:>+,.2f} ({day_pnl/starting_capital:.1%})"
+                    )
 
             # 1. Hard close at end of session — fire once when we cross 15:30
             #    ET, mark each open intraday trade to its own last close.
@@ -244,14 +262,25 @@ class TABacktester:
             # 2. Manage open trades on this bar (stops/targets/trail)
             ot = self._open.get(ticker)
             if ot is not None:
+                pre_legs = len(self._closed)
                 self._manage_open_trade(ot, bar, ts, spread_cost)
-                # If trade fully closed during management, drop it
                 if ot.qty_remaining <= 0:
+                    # Inspect the closing leg to detect a stop-out and arm cooldown
+                    if pre_legs < len(self._closed):
+                        last_leg = self._closed[-1]
+                        if last_leg.close_type == "stop":
+                            last_stop_bar_per_ticker[ticker] = bar_count
                     self._open.pop(ticker, None)
-                    self._update_daily_halt(starting_capital)
                 continue
 
             if daily_halt:
+                continue
+
+            # Per-ticker daily cap and post-stop cooldown — block new entries
+            if trades_today_per_ticker.get(ticker, 0) >= cfg.max_trades_per_ticker_per_day:
+                continue
+            since_stop = bar_count - last_stop_bar_per_ticker.get(ticker, -10**9)
+            if since_stop < cfg.cooldown_bars_after_stop:
                 continue
 
             # 3. Look for a fresh setup ----------------------------------------
@@ -300,7 +329,7 @@ class TABacktester:
                 sector=self.sectors.get(ticker),
             )
             self._open[ticker] = ot
-            seen_setup_for_ticker_today[ticker] = 0
+            trades_today_per_ticker[ticker] = trades_today_per_ticker.get(ticker, 0) + 1
 
         def _today_df(df: pd.DataFrame) -> pd.DataFrame:
             idx = df.index
@@ -580,6 +609,8 @@ def run_ta_backtest(config: dict) -> None:
         daily_pnl_halt_pct=risk.get("daily_pnl_halt_pct", -0.02),
         spread_bps=bt.get("spread_bps", 1),
         cancel_after_bars=config.get("execution", {}).get("cancel_after_bars", 2),
+        max_trades_per_ticker_per_day=ta_cfg.get("anti_churn", {}).get("max_trades_per_ticker_per_day", 2),
+        cooldown_bars_after_stop=ta_cfg.get("anti_churn", {}).get("cooldown_bars_after_stop", 20),
         target1_r=ta_cfg.get("exits", {}).get("target1_r", 1.0),
         target1_pct=ta_cfg.get("exits", {}).get("target1_pct", 0.40),
         target2_pct=ta_cfg.get("exits", {}).get("target2_pct", 0.40),
