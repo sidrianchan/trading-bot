@@ -1,0 +1,29 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.pytest_cache/
+*.egg-info/
+
+# Env / secrets
+.env
+
+# Local caches and data dumps
+.cache/
+data/cache/
+ruvector.db
+.swarm/
+.claude-flow/
+
+# OS
+.DS_Store
+
+# Logs
+logs/
+!logs/.gitkeep
+
+# Generated artifacts
+backtest_results.png
+feature_importance.png
+models/

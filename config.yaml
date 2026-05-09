@@ -1,0 +1,102 @@
+universe:
+  source: sp500          # fetches current S&P 500 from Wikipedia
+  benchmark: SPY         # benchmark ticker
+  top_n_market_cap: 150  # filter to top 150 stocks by market cap
+
+strategy:
+  momentum:
+    lookback_days: 126   # 6-month lookback (better documented for large caps)
+    skip_days: 21        # skip last month to avoid short-term reversal
+    weight: 0.70
+  quality:
+    roe_weight: 0.40     # return on equity
+    debt_equity_weight: 0.30  # lower is better
+    revenue_growth_weight: 0.30
+    weight: 0.20
+  low_volatility:
+    lookback_days: 63    # 3-month volatility
+    weight: 0.10
+  trend_filter:
+    enabled: true
+    ma_days: 200         # go to cash if SPY < 200-day MA
+  top_n: 25              # hold top 25 ranked stocks
+
+portfolio:
+  target_volatility: 0.15    # 15% annualized target vol
+  max_position_size: 0.10    # 10% per stock hard cap
+  min_position_size: 0.01    # 1% minimum (avoids tiny positions)
+  max_sector_exposure: 0.30  # 30% per GICS sector
+  rebalance_day: last        # last trading day of each month
+  fractional_shares: true
+
+risk:
+  max_single_trade_risk: 0.02     # 2% max portfolio risk per trade
+  stop_loss_pct: 0.15             # 15% hard stop per position
+  portfolio_drawdown_limit: 0.15  # circuit breaker at 15% drawdown from peak
+  drawdown_reset_threshold: 0.07  # resume trading when DD recovers to 7%
+
+execution:
+  order_type: market_on_close
+  submission_cutoff: "15:45"  # 3:45 PM ET — before MOC cutoff
+  slippage_bps: 5             # 5 bps slippage assumption
+  commission_bps: 0           # Alpaca commission-free
+
+backtest:
+  start_date: "2018-01-01"
+  end_date: "2024-12-31"
+  initial_capital: 100000.0
+  training_window_months: 24
+  test_window_months: 6
+  transaction_cost_bps: 10   # 10 bps round-trip
+
+monitor:
+  report_time: "16:00"       # intraday daily summary at 4:00 PM ET
+  log_level: INFO
+  log_dir: logs/
+
+intraday:
+  universe:
+    sources: [sp500, russell1000]
+    min_adv_usd: 10_000_000      # $10M average daily dollar volume
+    min_price: 5.00              # $5 minimum price
+
+  candidates:
+    top_n: 15                    # max candidates streamed per day
+
+  signals:
+    gap_min_pct: 1.5             # minimum gap vs prior close (universe shaping)
+    premarket_volume_ratio: 2.0  # pre-market vol vs 30-day avg (normalized)
+    atr_min_dollars: 0.50        # minimum 14-day ATR in dollars
+    orb_minutes: 15              # opening range window (informational only)
+    # VWAP mean-reversion (PRIMARY signal)
+    vwap_std_threshold: 1.5      # σ from VWAP required to trigger fade entry
+    vwap_stop_std: 2.5           # stop placed at VWAP ± stop_std × σ
+    vwap_min_dollar_deviation_pct: 0.015  # 1.5% min |price-VWAP|/price (noise filter)
+    vwap_confirm_reversal: true  # require previous bar to close back toward VWAP
+    # Day classification
+    day_trend_threshold: 0.01    # |SPY move from 09:30 open| ≥ 1% by 10:00 ET ⇒ trend
+    day_classify_time: "10:00"   # ET; entries also gated until this time
+    entry_start_time: "10:00"
+    spy_range_threshold: 0.005   # SPY high-low range < 0.5% reinforces "range"
+    vix_range_override: 20.0     # prior-day VIX > this → force "range" regardless of SPY
+
+  risk:
+    max_concurrent_positions: 8
+    risk_per_trade_pct: 0.005    # 0.5% of portfolio per trade
+    trend_day_size_mult: 0.5     # 50% size on trend days (set 0.0 to skip entirely)
+    daily_pnl_halt_pct: -0.02    # halt new entries if daily P&L < -2%
+    min_rr_ratio: 1.5            # safety floor: skip trades where structural R:R < 1.5
+    cooldown_bars_after_stop: 15 # block re-entry on same ticker for N bars after a stop
+    max_trades_per_ticker_per_day: 2  # hard cap on entries per name per session
+
+  execution:
+    entry_type: limit
+    hard_close_time: "15:30"
+    report_time: "16:00"
+    no_overnight: true
+
+  backtest:
+    start_date: "2023-01-01"
+    end_date: "2024-12-31"
+    slippage_bps: 2              # 0.02% per side
+    spread_bps: 1                # 0.01% per trade as spread cost
