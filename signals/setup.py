@@ -219,7 +219,14 @@ class SetupEngine:
         wanted_role = "support" if direction == "long" else "resistance"
         aligned_levels = [lvl for lvl in nearby if lvl.role == wanted_role]
         at_sr_level = bool(aligned_levels)
-        sr_price = aligned_levels[0].price if aligned_levels else last_15m_close
+        # Prefer a daily-reference level (PDH/PDL/PWH/PWL) when one is present
+        # — those promote the trade to a swing setup. Otherwise pick the
+        # closest level for the structural stop placement.
+        DAILY_REF_KINDS = {"pdh", "pdl", "pwh", "pwl"}
+        daily_aligned = [lvl for lvl in aligned_levels if lvl.kind in DAILY_REF_KINDS]
+        sr_level_obj = (daily_aligned[0] if daily_aligned
+                        else aligned_levels[0] if aligned_levels else None)
+        sr_price = sr_level_obj.price if sr_level_obj is not None else last_15m_close
 
         # 3. 15-min triggers ---------------------------------------------------
         candles = detect_all(bars_15m)
@@ -252,10 +259,12 @@ class SetupEngine:
         close_15m = bars_15m["close"]
         rsi_15 = rsi_series(close_15m, period=cfg.rsi_period)
         rsi_now = float(rsi_15.iloc[-1]) if not rsi_15.dropna().empty else 50.0
+        # Strict: long entries require true oversold (RSI < rsi_oversold),
+        # short entries require true overbought (RSI > rsi_overbought).
         if direction == "long":
-            rsi_aligned = rsi_now < cfg.rsi_oversold + 15  # ≤ 50 considered constructive
+            rsi_aligned = rsi_now < cfg.rsi_oversold
         else:
-            rsi_aligned = rsi_now > cfg.rsi_overbought - 15
+            rsi_aligned = rsi_now > cfg.rsi_overbought
 
         macd_vals = macd_calc(
             close_15m,
@@ -325,9 +334,13 @@ class SetupEngine:
             return None
 
         # 7. Hold-type classification -----------------------------------------
-        # Swing if the structural level came from the higher-timeframe map.
-        # Intraday if we're acting purely on the 15-min trigger context.
-        hold_type: HoldType = "swing" if at_sr_level else "intraday"
+        # Swing if the structural level is a Daily reference (PDH/PDL/PWH/PWL).
+        # Intraday otherwise (1H swing pivot or round-number level).
+        hold_type: HoldType = (
+            "swing"
+            if (sr_level_obj is not None and sr_level_obj.kind in DAILY_REF_KINDS)
+            else "intraday"
+        )
 
         # Earnings filter (swing only) ----------------------------------------
         if hold_type == "swing" and skip_earnings and as_of is not None:

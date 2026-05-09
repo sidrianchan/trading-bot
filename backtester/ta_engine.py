@@ -54,6 +54,7 @@ class TABacktestConfig:
     intraday_hard_close_et: str = "15:30"
     swing_max_days: int = 5
     earnings_blackout_days: int = 5
+    entry_cutoff_et: str = "15:30"        # no new setups after this ET time
 
     # Gate
     min_win_rate: float = 0.45
@@ -281,6 +282,11 @@ class TABacktester:
                 continue
             since_stop = bar_count - last_stop_bar_per_ticker.get(ticker, -10**9)
             if since_stop < cfg.cooldown_bars_after_stop:
+                continue
+
+            # No new entries after the ET entry cutoff (avoids closing-bar
+            # artifacts from the resample).
+            if time_str >= cfg.entry_cutoff_et:
                 continue
 
             # 3. Look for a fresh setup ----------------------------------------
@@ -617,6 +623,7 @@ def run_ta_backtest(config: dict) -> None:
         trail_pct=ta_cfg.get("exits", {}).get("trail_pct", 0.20),
         trail_atr_mult=ta_cfg.get("exits", {}).get("trail_atr_mult", 1.0),
         intraday_hard_close_et=ta_cfg.get("hold", {}).get("intraday_hard_close", "15:30"),
+        entry_cutoff_et=ta_cfg.get("hold", {}).get("entry_cutoff_et", "15:30"),
         swing_max_days=ta_cfg.get("hold", {}).get("swing_max_days", 5),
         earnings_blackout_days=ta_cfg.get("hold", {}).get("earnings_blackout_days", 5),
         min_win_rate=ta_cfg.get("gate", {}).get("min_win_rate", 0.45),
