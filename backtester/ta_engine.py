@@ -8,6 +8,7 @@ Public entry point: :func:`run_ta_backtest`.
 """
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -135,14 +136,21 @@ class TABacktester:
             except Exception as exc:
                 logger.debug(f"resample failed for {t}: {exc}")
 
-        all_dates = sorted({d.date() for df in bars_15m_full.values() for d in df.index})
-        all_dates = [d for d in all_dates if start <= d <= end]
+        # Use ET-local dates so a bar at 21:00 UTC = 16:00 ET correctly
+        # belongs to that ET trading session.
+        all_date_set: set = set()
+        for df in bars_15m_full.values():
+            idx = df.index
+            idx_local = idx.tz_convert("America/New_York") if idx.tz is not None else idx
+            all_date_set.update(idx_local.date)
+        all_dates = sorted(d for d in all_date_set if start <= d <= end)
         if not all_dates:
             logger.warning("No 15-min bars in requested range")
             return pd.Series(dtype=float), []
 
         prev_capital = self._capital
-        for trading_date in all_dates:
+        total_days = len(all_dates)
+        for i, trading_date in enumerate(all_dates, start=1):
             self._simulate_day(
                 trading_date,
                 bars_15m_full,
@@ -154,9 +162,11 @@ class TABacktester:
             n_trades_today = sum(
                 1 for c in self._closed if c.exit_dt.date() == trading_date
             )
-            if n_trades_today:
-                logger.debug(
-                    f"{trading_date}  P&L=${day_pnl:>+,.2f}  closed={n_trades_today}  "
+            # Per-day progress at INFO level so we can see the run advance
+            if i % 5 == 0 or n_trades_today or i == total_days:
+                logger.info(
+                    f"day {i}/{total_days}  {trading_date}  "
+                    f"P&L=${day_pnl:>+,.2f}  closed={n_trades_today}  "
                     f"open={len(self._open)}  equity=${self._capital:,.0f}"
                 )
             prev_capital = self._capital
@@ -179,11 +189,16 @@ class TABacktester:
         starting_capital = self._capital
         daily_halt = False
 
-        # Build a per-bar timeline across all tickers, sorted
+        # Build a per-bar timeline across all tickers, sorted.
+        # ``trading_date`` was derived from the bars' ET-local date; convert
+        # the timestamps to ET before extracting `.date` so we match correctly
+        # for both tz-aware (UTC) and tz-naive indexes.
         timeline: list[tuple[pd.Timestamp, str, dict]] = []
         for ticker, df in bars_15m_full.items():
-            day_df = df[df.index.date == trading_date] if hasattr(df.index, "date") \
-                else df[df.index.floor("D") == td]
+            idx = df.index
+            idx_local = idx.tz_convert("America/New_York") if idx.tz is not None else idx
+            day_mask = idx_local.date == trading_date
+            day_df = df[day_mask]
             if day_df.empty:
                 continue
             for ts, row in day_df.iterrows():
@@ -200,19 +215,31 @@ class TABacktester:
         spread_cost = lambda px: px * cfg.spread_bps / 10_000.0  # noqa: E731
 
         seen_setup_for_ticker_today: dict[str, int] = {}  # ticker → bars elapsed since trigger
+        last_close_per_ticker: dict[str, float] = {}      # last seen close per ticker today
+        hard_closed_today = False                         # one-shot flush at 15:30
 
         for ts, ticker, bar in timeline:
             ts_et = ts.tz_convert("America/New_York") if ts.tz is not None else ts
             time_str = ts_et.strftime("%H:%M") if hasattr(ts_et, "strftime") else "00:00"
 
-            # 1. Hard close at end of session for any intraday open trades
-            if time_str >= cfg.intraday_hard_close_et:
+            # Track the latest close per ticker so the hard-close block can
+            # mark every position to its OWN last seen price (not whichever
+            # ticker happens to be on the current timeline iteration).
+            last_close_per_ticker[ticker] = bar["close"]
+
+            # 1. Hard close at end of session — fire once when we cross 15:30
+            #    ET, mark each open intraday trade to its own last close.
+            if not hard_closed_today and time_str >= cfg.intraday_hard_close_et:
+                hard_closed_today = True
                 for t, ot in list(self._open.items()):
                     if ot.setup.hold_type == "intraday":
-                        self._close_trade(ot, bar["close"], ts, "hard_close", spread_cost)
-                # Drop counter so we don't try to enter after hard-close
-                if not self._open:
-                    pass
+                        close_price = last_close_per_ticker.get(t, ot.setup.entry_price)
+                        # Use the open trade's own ticker timestamp if we have
+                        # a more recent bar for it; otherwise use the current
+                        # bar's timestamp as a stand-in.
+                        self._close_trade(ot, close_price, ts, "hard_close", spread_cost)
+                        if ot.qty_remaining <= 0:
+                            self._open.pop(t, None)
 
             # 2. Manage open trades on this bar (stops/targets/trail)
             ot = self._open.get(ticker)
@@ -241,8 +268,11 @@ class TABacktester:
             )
             if stack is None:
                 continue
+            # Earnings filter disabled in the backtester — it would call
+            # yfinance hundreds of thousands of times. The filter applies in
+            # the live agent loop (Phase F).
             results = self.engine.evaluate(
-                {ticker: stack}, as_of=trading_date, skip_earnings=True
+                {ticker: stack}, as_of=trading_date, skip_earnings=False
             )
             if not results:
                 continue
@@ -272,11 +302,16 @@ class TABacktester:
             self._open[ticker] = ot
             seen_setup_for_ticker_today[ticker] = 0
 
+        def _today_df(df: pd.DataFrame) -> pd.DataFrame:
+            idx = df.index
+            idx_local = idx.tz_convert("America/New_York") if idx.tz is not None else idx
+            return df[idx_local.date == trading_date]
+
         # End-of-day cleanup: any intraday positions still open get force-closed
         for t, ot in list(self._open.items()):
             if ot.setup.hold_type == "intraday":
                 last_bar = bars_15m_full[t]
-                day_df = last_bar[last_bar.index.date == trading_date]
+                day_df = _today_df(last_bar)
                 if day_df.empty:
                     continue
                 last_close = float(day_df["close"].iloc[-1])
@@ -294,7 +329,7 @@ class TABacktester:
                 last_bar = bars_15m_full.get(t)
                 if last_bar is None or last_bar.empty:
                     continue
-                day_df = last_bar[last_bar.index.date == trading_date]
+                day_df = _today_df(last_bar)
                 if day_df.empty:
                     continue
                 last_close = float(day_df["close"].iloc[-1])
@@ -471,7 +506,22 @@ class TABacktester:
         # Slice strictly up to and including the current 15-min trigger
         m15_slice = m15[m15.index <= ts]
         h1_slice = h1[h1.index <= ts]
-        daily_slice = daily[daily.index <= pd.Timestamp(ts).normalize()]
+
+        # Daily bars are tz-naive (yfinance); intraday are tz-aware (UTC).
+        # Normalize the cutoff to a tz-naive midnight in the daily series'
+        # implicit timezone (yfinance dailies are calendar dates).
+        ts_for_daily = pd.Timestamp(ts)
+        if ts_for_daily.tz is not None:
+            ts_for_daily = ts_for_daily.tz_convert("America/New_York").tz_localize(None)
+        cutoff = ts_for_daily.normalize()
+        daily_idx = daily.index
+        if daily_idx.tz is not None:
+            daily_idx_for_cmp = daily_idx.tz_convert(None)
+            mask = daily_idx_for_cmp <= cutoff
+        else:
+            mask = daily_idx <= cutoff
+        daily_slice = daily[mask]
+
         if m15_slice.empty or h1_slice.empty or daily_slice.empty:
             return None
         return {"daily": daily_slice, "1h": h1_slice, "15m": m15_slice}
@@ -501,10 +551,24 @@ def run_ta_backtest(config: dict) -> None:
     risk = config.get("risk", {})
     portfolio = config.get("portfolio", {})
 
-    test_start = pd.Timestamp(bt.get("test_start", "2024-01-01")).date()
-    test_end = pd.Timestamp(bt.get("test_end", "2024-12-31")).date()
+    # ── Data fetch range (full, always — these match the parquet cache keys)
     train_start = pd.Timestamp(bt.get("train_start", "2023-01-01")).date()
     train_end = pd.Timestamp(bt.get("train_end", "2023-12-31")).date()
+    fetch_test_end = pd.Timestamp(bt.get("test_end", "2024-12-31")).date()
+
+    # ── Engine evaluation window (what the gate is measured over)
+    test_start = pd.Timestamp(bt.get("test_start", "2024-01-01")).date()
+    test_end = fetch_test_end
+
+    # Optional smoke-run overrides — affect only the engine evaluation window,
+    # never the data-fetch range, so the parquet cache always hits.
+    if (override := os.environ.get("TA_BACKTEST_TEST_START")):
+        test_start = pd.Timestamp(override).date()
+        logger.warning(f"TA_BACKTEST_TEST_START override → {test_start}")
+    if (override := os.environ.get("TA_BACKTEST_TEST_END")):
+        test_end = pd.Timestamp(override).date()
+        logger.warning(f"TA_BACKTEST_TEST_END override → {test_end}")
+    max_universe = int(os.environ.get("TA_BACKTEST_MAX_TICKERS", "0"))
     initial_capital = bt.get("initial_capital", portfolio.get("initial_capital", 100_000.0))
 
     cfg = TABacktestConfig(
@@ -537,19 +601,47 @@ def run_ta_backtest(config: dict) -> None:
         russell = get_russell1000_tickers()
     except Exception:
         pass
-    universe = sorted(set(sp500) | set(russell) | {"SPY"})
-    logger.info(f"Universe pre-liquidity: {len(universe)} tickers")
+    full_universe = sorted(set(sp500) | set(russell) | {"SPY"})
 
-    # Daily bars -----------------------------------------------------------
+    # First-pass optimization: if a parquet cache already exists for the
+    # configured FETCH range, restrict to that set instead of fetching ~1000
+    # tickers from Alpaca + yfinance. The cache was populated for the most
+    # actively traded large-cap names — exactly what the liquidity filter
+    # would have selected anyway.
+    cache_dir = Path("data/cache/intraday")
+    train_str = pd.Timestamp(train_start).strftime("%Y-%m-%d")
+    fetch_test_str = pd.Timestamp(fetch_test_end).strftime("%Y-%m-%d")
+    if cache_dir.exists():
+        cached_tickers = {
+            p.name.split("_")[0]
+            for p in cache_dir.glob(f"*_{train_str}_{fetch_test_str}.parquet")
+        }
+        if cached_tickers:
+            universe = sorted(cached_tickers & set(full_universe) | {"SPY"})
+            if max_universe and len(universe) > max_universe:
+                universe = sorted(set(universe[:max_universe]) | {"SPY"})
+            logger.warning(
+                f"Phase E first-pass: restricting to {len(universe)} cached tickers "
+                f"(use a fresh fetch for full {len(full_universe)}-name universe later)"
+            )
+        else:
+            universe = full_universe
+            logger.info(f"Universe pre-liquidity: {len(universe)} tickers")
+    else:
+        universe = full_universe
+        logger.info(f"Universe pre-liquidity: {len(universe)} tickers")
+
+    # Daily bars (need ≥1 yr extra for SMA200 warmup) ---------------------
     daily_start = (pd.Timestamp(train_start) - pd.Timedelta(days=400)).strftime("%Y-%m-%d")
-    daily_end = (pd.Timestamp(test_end) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
+    daily_end = (pd.Timestamp(fetch_test_end) + pd.Timedelta(days=1)).strftime("%Y-%m-%d")
     logger.info(f"Fetching daily bars {daily_start} → {daily_end}")
     daily_close = fetch_prices(universe, start=daily_start, end=daily_end, source="yfinance")
     bars_daily = _close_only_to_ohlc(daily_close)
 
-    # 1-min bars (test window only — 2024) for the gate measurement -------
-    range_start = test_start.strftime("%Y-%m-%d")
-    range_end = test_end.strftime("%Y-%m-%d")
+    # 1-min bars — always request the FULL configured range so the parquet
+    # cache hits. The engine filters to ``test_start..test_end`` internally.
+    range_start = train_start.strftime("%Y-%m-%d")
+    range_end = fetch_test_end.strftime("%Y-%m-%d")
     logger.info(f"Fetching 1-min bars {range_start} → {range_end}")
     bars_1min = fetch_intraday_bars_range(universe, range_start, range_end)
     logger.info(f"Loaded 1-min bars for {len(bars_1min)} tickers")
