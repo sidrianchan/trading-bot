@@ -700,6 +700,8 @@ def _build_engine_config(ta_cfg: dict) -> SetupEngineConfig:
         ema_fast=trend.get("ema_fast", 20),
         ema_slow=trend.get("ema_slow", 50),
         sma_long=trend.get("sma_long", 200),
+        adx_period=trend.get("adx_period", 14),
+        adx_min=trend.get("adx_min", 20.0),
         swing_pivot_window=sr.get("swing_pivot_window", 5),
         sr_cluster_pct=sr.get("cluster_tolerance_pct", 0.005),
         round_ladders=sr.get("round_number_levels", [1, 5, 10, 25, 50, 100]),
@@ -719,6 +721,9 @@ def _build_engine_config(ta_cfg: dict) -> SetupEngineConfig:
         breakout_volume_mult=br.get("min_volume_multiple", 1.5),
         score_threshold=sc.get("threshold", 65),
         top_n_per_day=sc.get("top_n_per_day", 5),
+        require_at_sr=sc.get("require_at_sr", True),
+        require_candle=sc.get("require_candle", True),
+        require_volume=sc.get("require_volume", True),
         max_stop_atr_mult=ta_cfg.get("risk", {}).get("max_stop_atr_mult", 1.5),
         earnings_blackout_days=ta_cfg.get("hold", {}).get("earnings_blackout_days", 5),
     )

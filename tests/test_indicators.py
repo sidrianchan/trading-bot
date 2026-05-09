@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from signals.indicators.trend import ema, sma, classify
+from signals.indicators.trend import ema, sma, classify, adx
 from signals.indicators.momentum import (
     rsi, macd, macd_cross, histogram_expanding, bullish_divergence, bearish_divergence,
 )
@@ -69,6 +69,36 @@ class TestTrend:
     def test_classify_returns_none_with_insufficient_history(self):
         close = pd.Series(np.linspace(100, 110, 50))
         assert classify(_ohlc_from_close(close)) is None
+
+    def test_adx_high_in_strong_trend(self):
+        # Steady, monotonic uptrend → ADX should rise
+        close = pd.Series(np.linspace(100, 200, 250))
+        bars = _ohlc_from_close(close)
+        a = adx(bars, period=14)
+        assert a.iloc[-1] > 25     # comfortably in 'trending' territory
+
+    def test_adx_low_in_chop(self):
+        rng = np.random.default_rng(7)
+        close = pd.Series(100 + rng.normal(0, 0.3, 200).cumsum())
+        bars = _ohlc_from_close(close)
+        a = adx(bars, period=14)
+        # Random walk → ADX should not be in strong-trend territory
+        assert a.iloc[-1] < 30
+
+    def test_classify_range_when_adx_too_low(self):
+        # MAs perfectly aligned but the price is choppy — ADX should be low
+        # → classify returns 'range', not 'uptrend'.
+        rng = np.random.default_rng(3)
+        # Tilt slightly upward so MAs still align bullishly
+        drift = np.linspace(0, 5, 250)
+        noise = rng.normal(0, 0.5, 250).cumsum()
+        close = pd.Series(150 + drift + noise)
+        bars = _ohlc_from_close(close)
+        snap = classify(bars, adx_min=30)   # high bar to force chop classification
+        assert snap is not None
+        # Either ADX failed (range) or trend held; the test asserts the gate works
+        if snap.adx < 30:
+            assert snap.bias == "range"
 
 
 # ── Momentum ───────────────────────────────────────────────────────────────

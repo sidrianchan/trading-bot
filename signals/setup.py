@@ -83,10 +83,12 @@ class _BarStack:
 
 @dataclass
 class SetupEngineConfig:
-    # Trend / EMAs
+    # Trend / EMAs / ADX
     ema_fast: int = 20
     ema_slow: int = 50
     sma_long: int = 200
+    adx_period: int = 14
+    adx_min: float = 20.0
     swing_pivot_window: int = 5
     sr_cluster_pct: float = 0.005
     round_ladders: list[int] = field(default_factory=lambda: [1, 5, 10, 25, 50, 100])
@@ -112,6 +114,12 @@ class SetupEngineConfig:
     # Scoring
     score_threshold: float = 65.0
     top_n_per_day: int = 5
+
+    # Hard gates — these components must be ON for entry (in addition to
+    # the score threshold). RSI / MACD remain weighted bonuses.
+    require_at_sr: bool = True
+    require_candle: bool = True
+    require_volume: bool = True
 
     # Stops / hold
     max_stop_atr_mult: float = 1.5
@@ -178,6 +186,8 @@ class SetupEngine:
             ema_fast=cfg.ema_fast,
             ema_slow=cfg.ema_slow,
             sma_long=cfg.sma_long,
+            adx_period=cfg.adx_period,
+            adx_min=cfg.adx_min,
         )
         if trend is None or trend.bias == "range":
             return None
@@ -269,7 +279,16 @@ class SetupEngine:
             # Already had volume confirmation in the breakout detector
             volume_confirmed = True
 
-        # 5. Score -------------------------------------------------------------
+        # 5a. Hard gates — components that MUST be on regardless of score.
+        # Trend is already gated (we returned early if bias was 'range').
+        if cfg.require_at_sr and not at_sr_level:
+            return None
+        if cfg.require_candle and not candle_aligned:
+            return None
+        if cfg.require_volume and not volume_confirmed:
+            return None
+
+        # 5b. Score (RSI / MACD remain weighted bonuses) ----------------------
         card = score_setup(
             at_sr_level=at_sr_level,
             candle_triggered=candle_aligned,

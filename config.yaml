@@ -42,6 +42,8 @@ ta:
     ema_fast: 20
     ema_slow: 50
     sma_long: 200                  # 200-day simple MA — major bias filter
+    adx_period: 14
+    adx_min: 20.0                  # ADX(14) must clear this for uptrend/downtrend bias
     swing_lookback_bars: 30        # window for swing high/low detection
 
   support_resistance:
@@ -77,8 +79,11 @@ ta:
       rsi: 15
       macd: 10
       volume: 10
-    threshold: 70                  # composite score required to trigger a setup
+    threshold: 80                  # composite score required to trigger a setup
     top_n_per_day: 5               # only act on the top-N setups by score
+    require_at_sr: true            # hard gate — entry must occur at a key S/R level
+    require_candle: true           # hard gate — directional candle must fire
+    require_volume: true           # hard gate — volume ≥ 1.5× 20-bar avg required
 
   anti_churn:
     max_trades_per_ticker_per_day: 2   # hard cap on entries per name per session
