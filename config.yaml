@@ -100,3 +100,26 @@ intraday:
     end_date: "2024-12-31"
     slippage_bps: 2              # 0.02% per side
     spread_bps: 1                # 0.01% per trade as spread cost
+
+
+momentum_paper:
+  capital: 70000
+
+crypto:
+  capital: 30000
+  universe: [BTC/USD, ETH/USD]
+  stable: USDC/USD
+  absolute_momentum:
+    lookback_days: 84
+    skip_days: 14
+  relative_momentum:
+    lookback_days: 7
+    skip_days: 14
+  rebalance: weekly_monday_0900
+  circuit_breaker:
+    max_drawdown_from_peak: -0.40
+  order:
+    type: limit
+    mid_price_tolerance: 0.001
+    cancel_after_minutes: 5
+    max_attempts: 3

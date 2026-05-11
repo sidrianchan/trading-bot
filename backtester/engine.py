@@ -83,17 +83,21 @@ class WalkForwardBacktester:
                 logger.debug(f"{date.date()} — Circuit breaker OFF (dd recovered to {dd:.1%})")
 
             if date in rebalance_dates and i >= min_history:
-                if not circuit_breaker:
-                    available = close.iloc[: i + 1]
-                    target_weights = self._compute_target(available, prices_today)
-                    shares, cost = self._rebalance(
-                        shares, target_weights, portfolio_value, prices_today, cfg
-                    )
-                    cash = portfolio_value - sum(
-                        shares.get(t, 0) * prices_today.get(t, 0) for t in shares
-                    )
-                    portfolio_value -= cost
-                    cash -= cost
+                # Trend filter (SPY < 200d MA → cash) inside _compute_target is now
+                # the single source of truth for cash vs invested. The drawdown
+                # circuit breaker is informational only; previously its `if not
+                # circuit_breaker:` guard skipped rebalance entirely, locking the
+                # strategy into losing positions through every multi-month bear.
+                available = close.iloc[: i + 1]
+                target_weights = self._compute_target(available, prices_today)
+                shares, cost = self._rebalance(
+                    shares, target_weights, portfolio_value, prices_today, cfg
+                )
+                cash = portfolio_value - sum(
+                    shares.get(t, 0) * prices_today.get(t, 0) for t in shares
+                )
+                portfolio_value -= cost
+                cash -= cost
 
             daily_values[date] = cash + sum(
                 shares.get(t, 0) * prices_today.get(t, 0) for t in shares
@@ -128,12 +132,32 @@ class WalkForwardBacktester:
         scores = signal.compute(available_prices, self.fundamentals)
 
         # Trend filter: go to cash if SPY < 200-day MA
-        if "SPY" in available_prices.columns and len(available_prices) >= cfg.trend_filter_days:
+        _eval_date = available_prices.index[-1].date()
+        _spy_present = "SPY" in available_prices.columns
+        _enough_lookback = len(available_prices) >= cfg.trend_filter_days
+        if _spy_present and _enough_lookback:
             spy = available_prices["SPY"]
             spy_ma = spy.rolling(cfg.trend_filter_days).mean().iloc[-1]
-            if spy.iloc[-1] < spy_ma:
-                logger.info(f"{available_prices.index[-1].date()} — Trend filter active: going to cash")
+            spy_last = spy.iloc[-1]
+            _below = spy_last < spy_ma
+            logger.warning(
+                f"TREND_DIAG {_eval_date} spy_present=YES rows={len(available_prices)} "
+                f"spy_last={spy_last:.2f} spy_ma={spy_ma:.2f} below={_below} "
+                f"decision={'CASH' if _below else 'INVEST'}"
+            )
+            if _below:
+                logger.info(f"{_eval_date} — Trend filter active: going to cash")
                 return pd.Series(dtype=float)
+        else:
+            _reason = []
+            if not _spy_present:
+                _reason.append("SPY_MISSING")
+            if not _enough_lookback:
+                _reason.append(f"INSUFFICIENT_LOOKBACK({len(available_prices)}<{cfg.trend_filter_days})")
+            logger.warning(
+                f"TREND_DIAG {_eval_date} spy_present={_spy_present} "
+                f"reason={','.join(_reason)} decision=INVEST(filter_skipped)"
+            )
 
         if scores.empty:
             return pd.Series(dtype=float)

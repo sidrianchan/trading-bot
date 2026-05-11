@@ -1,0 +1,10 @@
+[Unit]
+Description=Run Trading Bot Daily Health Check
+
+[Timer]
+OnCalendar=*-*-* 08:10:00 America/New_York
+Persistent=true
+Unit=trading-health.service
+
+[Install]
+WantedBy=timers.target

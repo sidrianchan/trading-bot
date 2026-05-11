@@ -1,3 +1,3 @@
-from agent.loop import AgentLoop
+from agent.loop import IntradayAgentLoop
 
-__all__ = ["AgentLoop"]
+__all__ = ["IntradayAgentLoop"]

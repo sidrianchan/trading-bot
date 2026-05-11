@@ -8,6 +8,7 @@ __pycache__/
 
 # Env / secrets
 .env
+.kill_switch
 
 # Local caches and data dumps
 .cache/

@@ -7,8 +7,10 @@ from signals.intraday_composite import IntradayComposite, IntradayCandidate
 from signals.momentum import MomentumSignal
 from signals.quality import QualitySignal
 from signals.volatility import LowVolatilitySignal
+from signals.composite import CompositeSignal
 from signals.ml_signal import XGBoostRankerSignal
 from signals.features import build_feature_history, build_target_history
+from signals.crypto_momentum import CryptoMomentumConfig, CryptoMomentumState, compute_crypto_signal
 
 __all__ = [
     # Intraday
@@ -24,7 +26,11 @@ __all__ = [
     "MomentumSignal",
     "QualitySignal",
     "LowVolatilitySignal",
+    "CompositeSignal",
     "XGBoostRankerSignal",
     "build_feature_history",
     "build_target_history",
+    "CryptoMomentumConfig",
+    "CryptoMomentumState",
+    "compute_crypto_signal",
 ]
