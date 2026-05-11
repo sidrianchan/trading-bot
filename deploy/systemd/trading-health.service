@@ -1,0 +1,11 @@
+[Unit]
+Description=Trading Bot Daily Health Check
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=trader
+WorkingDirectory=/home/trader/trading-bot
+EnvironmentFile=/home/trader/trading-bot/.env
+ExecStart=/home/trader/trading-bot/.venv/bin/python /home/trader/trading-bot/main.py health

@@ -103,15 +103,30 @@ ta:
     earnings_blackout_days: 5      # skip swing if earnings within N calendar days
 
   backtest:
-    train_start: "2023-01-01"
-    train_end:   "2023-12-31"
-    test_start:  "2024-01-01"
-    test_end:    "2024-12-31"
-    initial_capital: 100_000.0
-    spread_bps: 1                  # 0.01% per side (round-trip = 0.02%)
-    fill_unfilled_as_market: false # if limit doesn't fill, skip the trade
+    start_date: "2023-01-01"
+    end_date: "2024-12-31"
+    slippage_bps: 2              # 0.02% per side
+    spread_bps: 1                # 0.01% per trade as spread cost
 
-  gate:
-    min_win_rate: 0.45
-    min_reward_risk: 1.5
-    max_consecutive_losing_days: 7
+
+momentum_paper:
+  capital: 70000
+
+crypto:
+  capital: 30000
+  universe: [BTC/USD, ETH/USD]
+  stable: USDC/USD
+  absolute_momentum:
+    lookback_days: 84
+    skip_days: 14
+  relative_momentum:
+    lookback_days: 7
+    skip_days: 14
+  rebalance: weekly_monday_0900
+  circuit_breaker:
+    max_drawdown_from_peak: -0.40
+  order:
+    type: limit
+    mid_price_tolerance: 0.001
+    cancel_after_minutes: 5
+    max_attempts: 3
