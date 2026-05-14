@@ -25,7 +25,8 @@ class CryptoMomentumState:
 
     peak: float = 0.0
     cash_value: float = 0.0
-    last_target: Optional[str] = None
+    last_target: Optional[str] = None          # signal target (written by daily summary)
+    last_executed_target: Optional[str] = None  # actual position (written only after order fills)
     last_eval_date: Optional[str] = None
     last_btc_abs: Optional[float] = None
     last_btc_rel: Optional[float] = None
@@ -93,6 +94,7 @@ def compute_crypto_signal(
         peak=max(state.peak, current_value),
         cash_value=state.cash_value,
         last_target=state.last_target,
+        last_executed_target=state.last_executed_target,
         last_eval_date=state.last_eval_date,
         start_btc_price=state.start_btc_price,
     )
@@ -174,6 +176,7 @@ def state_from_dict(data: dict) -> CryptoMomentumState:
         peak=float(data.get("peak", 0.0)),
         cash_value=float(data.get("cash_value", 0.0)),
         last_target=data.get("last_target"),
+        last_executed_target=data.get("last_executed_target"),
         last_eval_date=data.get("last_eval_date"),
         last_btc_abs=data.get("last_btc_abs"),
         last_btc_rel=data.get("last_btc_rel"),

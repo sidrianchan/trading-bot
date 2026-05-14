@@ -113,12 +113,14 @@ class CryptoPaperLoop:
         current_value = self.scoped_value(state)
         signal, new_state = compute_crypto_signal(prices, state, current_value, self.crypto_config)
         self.print_signal(signal, dry=False)
-        prev_target = state.last_target
-        self._execute_target(signal.target, current_value, new_state)
-        if signal.target != prev_target:
+        prev_executed = state.last_executed_target
+        executed = self._execute_target(signal.target, current_value, new_state)
+        if signal.target != prev_executed:
             self.notify.rebalance(
                 "Crypto", signal.target or "USDC", signal.regime, current_value, signal.decision_reason
             )
+        if executed:
+            new_state.last_executed_target = signal.target
         new_state.last_eval_date = datetime.now(tz=self.et).date().isoformat()
         new_state.cash_value = self.scoped_value(new_state) if signal.target is None else 0.0
         self.save_state(new_state)
@@ -143,6 +145,7 @@ class CryptoPaperLoop:
             self._sell_positions(risk_positions)
             state.cash_value = current_value
             state.last_target = None
+            state.last_executed_target = None
             self.notify.circuit_breaker("Crypto", drawdown, current_value)
         self.save_state(state)
 
@@ -215,7 +218,7 @@ class CryptoPaperLoop:
             print("\n  [dry-run] No orders submitted, no state file modified.")
         print(f"{'=' * 72}\n")
 
-    def _execute_target(self, target: str | None, current_value: float, state: CryptoMomentumState) -> None:
+    def _execute_target(self, target: str | None, current_value: float, state: CryptoMomentumState) -> bool:
         self._ensure_broker()
         positions = self.broker.get_positions_for_symbols(list(self.crypto_config.universe) + [self.crypto_config.stable])
         stable_target = self.crypto_config.stable if target is None and self._is_stable_tradable() else None
@@ -227,21 +230,23 @@ class CryptoPaperLoop:
 
         if desired is None:
             state.cash_value = current_value
-            return
+            return True
 
         refreshed = self.broker.get_positions_for_symbols([desired])
         if not refreshed.empty and float(refreshed["market_value"].sum()) >= current_value * 0.98:
             logger.info(f"Crypto already positioned in {desired}; no buy needed")
             state.cash_value = 0.0 if desired in self.crypto_config.universe else current_value
-            return
+            return True
 
         available_cash = self.broker.get_cash()
         notional = min(current_value, available_cash)
         if notional < 1.0:
             logger.warning(f"Insufficient cash for crypto buy: ${available_cash:,.2f}")
-            return
+            return False
         if self._submit_limit_until_filled(desired, Side.BUY, notional=notional):
             state.cash_value = 0.0 if desired in self.crypto_config.universe else current_value
+            return True
+        return False
 
     def _sell_positions(self, positions: pd.DataFrame) -> None:
         if positions.empty:
