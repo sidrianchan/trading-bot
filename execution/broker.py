@@ -162,9 +162,21 @@ class AlpacaBroker:
             time.sleep(poll_seconds)
         return last_order
 
-    def cancel_order(self, order_id: str) -> None:
-        self._client.cancel_order_by_id(order_id)
-        logger.warning(f"Order cancelled: {order_id}")
+    def get_order(self, order_id: str):
+        return self._client.get_order_by_id(order_id)
+
+    def cancel_order(self, order_id: str) -> bool:
+        """Cancel an open order. Returns False if the order was already filled."""
+        from alpaca.common.exceptions import APIError  # type: ignore
+        try:
+            self._client.cancel_order_by_id(order_id)
+            logger.warning(f"Order cancelled: {order_id}")
+            return True
+        except APIError as exc:
+            if "filled" in str(exc).lower():
+                logger.warning(f"Cancel skipped — order already filled: {order_id}")
+                return False
+            raise
 
     def cancel_all_orders(self) -> None:
         self._client.cancel_orders()

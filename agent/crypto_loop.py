@@ -286,7 +286,15 @@ class CryptoPaperLoop:
                 self.notify.trade("Crypto", side.value.upper(), symbol, value,
                                   f"fill@{fill_price:.2f}")
                 return True
-            self.broker.cancel_order(order_id)
+            cancelled = self.broker.cancel_order(order_id)
+            if not cancelled:
+                # Order filled between the timeout check and the cancel call.
+                order = self.broker.get_order(order_id)
+                fill_price = float(getattr(order, "filled_avg_price", mid) or mid)
+                filled_qty = float(getattr(order, "filled_qty", 0) or 0)
+                value = fill_price * filled_qty if filled_qty else (notional or 0.0)
+                self.notify.trade("Crypto", side.value.upper(), symbol, value, f"fill@{fill_price:.2f}")
+                return True
             logger.warning(f"Crypto order unfilled after {self.cancel_after_minutes}m; resubmitting attempt {attempt + 1}")
         logger.error(f"Crypto order failed after {self.max_order_attempts} attempts: {side.value} {symbol}")
         return False
