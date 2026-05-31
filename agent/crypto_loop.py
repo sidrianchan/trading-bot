@@ -238,7 +238,8 @@ class CryptoPaperLoop:
             state.cash_value = 0.0 if desired in self.crypto_config.universe else current_value
             return True
 
-        available_cash = self.broker.get_cash()
+        # Cap to this bot's configured scope so it never spends the ETF bot's cash.
+        available_cash = min(self.broker.get_cash(), self.crypto_config.capital)
         notional = min(current_value, available_cash)
         if notional < 1.0:
             logger.warning(f"Insufficient cash for crypto buy: ${available_cash:,.2f}")
@@ -295,6 +296,21 @@ class CryptoPaperLoop:
                 value = fill_price * filled_qty if filled_qty else (notional or 0.0)
                 self.notify.trade("Crypto", side.value.upper(), symbol, value, f"fill@{fill_price:.2f}")
                 return True
+            # The order may have partially filled before we cancelled the remainder.
+            # If the resulting position already covers our scope, treat it as success
+            # so we set last_executed_target instead of re-entering the full buy path.
+            if side == Side.BUY:
+                filled = self.broker.get_positions_for_symbols([symbol])
+                position_value = 0.0 if filled.empty else float(filled["market_value"].sum())
+                if position_value >= self.crypto_config.capital * 0.95:
+                    logger.info(
+                        f"Crypto {symbol} position ${position_value:,.2f} already >= 95% of "
+                        f"capital (${self.crypto_config.capital:,.2f}) after partial fill; "
+                        f"treating buy as complete"
+                    )
+                    self.notify.trade("Crypto", side.value.upper(), symbol, position_value,
+                                      "partial fill settled to target")
+                    return True
             logger.warning(f"Crypto order unfilled after {self.cancel_after_minutes}m; resubmitting attempt {attempt + 1}")
         logger.error(f"Crypto order failed after {self.max_order_attempts} attempts: {side.value} {symbol}")
         return False

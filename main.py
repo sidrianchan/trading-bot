@@ -676,7 +676,8 @@ def cmd_momentum_paper(config: dict, dry_run: bool = False) -> None:
                         oid = broker.submit_order(order)
                         print(f"  -> BUY  {signal.target} ${buy_notional:,.2f}  order_id={oid}")
                         notify.trade("ETF", "BUY", signal.target, buy_notional, signal.decision_reason)
-                        new_state.cash_value = 0.0
+                        if oid is not None:
+                            new_state.cash_value = 0.0
                 elif not signal.target:
                     new_state.cash_value = portfolio_value
 

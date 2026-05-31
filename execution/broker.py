@@ -108,7 +108,7 @@ class AlpacaBroker:
                 symbol=order.ticker,
                 notional=round(order.notional, 2),
                 side=side,
-                time_in_force=self._TimeInForce.CLS,
+                time_in_force=self._TimeInForce.DAY,
             )
             result = self._client.submit_order(req)
             logger.info(
