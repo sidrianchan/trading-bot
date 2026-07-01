@@ -759,7 +759,7 @@ def cmd_momentum_paper(config: dict, dry_run: bool = False) -> None:
         logger.error(f"Initial check failed: {exc}", exc_info=True)
 
     # Schedule for 15:30 ET (Alpaca calendar uses NY time)
-    schedule.every().day.at("15:30").do(daily_check)
+    schedule.every().day.at("15:30", "America/New_York").do(daily_check)
     logger.info("Schedule: daily check at 15:30 ET. Press Ctrl+C to stop.")
     while True:
         schedule.run_pending()

@@ -90,6 +90,10 @@ class CryptoPaperLoop:
         positions = self.broker.get_positions_for_symbols(list(self.crypto_config.universe) + [self.crypto_config.stable])
         position_value = 0.0 if positions.empty else float(positions["market_value"].sum())
         if position_value > 0:
+            stable_norm = normalize_crypto_symbol(self.crypto_config.stable)
+            if all(idx == stable_norm for idx in positions.index):
+                # Holding stable only — state.cash_value would double-count the position
+                return position_value
             return position_value + max(0.0, state.cash_value)
         return state.cash_value or self.crypto_config.capital
 
@@ -233,7 +237,14 @@ class CryptoPaperLoop:
             return True
 
         refreshed = self.broker.get_positions_for_symbols([desired])
-        if not refreshed.empty and float(refreshed["market_value"].sum()) >= current_value * 0.98:
+        position_mv = float(refreshed["market_value"].sum()) if not refreshed.empty else 0.0
+        # Alpaca paper reports USDC/stable as cash (not a position), so also check state tracking
+        already_in_stable = (
+            desired == self.crypto_config.stable
+            and state.last_executed_target is None
+            and refreshed.empty
+        )
+        if position_mv >= current_value * 0.98 or already_in_stable:
             logger.info(f"Crypto already positioned in {desired}; no buy needed")
             state.cash_value = 0.0 if desired in self.crypto_config.universe else current_value
             return True
