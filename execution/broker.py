@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import os
 import time
 from typing import Iterable
@@ -101,6 +102,14 @@ class AlpacaBroker:
             return pd.Series(dtype=float)
         return (positions["market_value"] / total_value).rename("weight")
 
+    def _get_last_price(self, symbol: str) -> float:
+        import yfinance as yf  # type: ignore
+        info = yf.Ticker(symbol).fast_info
+        price = float(info.last_price)
+        if price <= 0:
+            raise ValueError(f"Invalid last price for {symbol}: {price}")
+        return price
+
     def submit_order(self, order: Order) -> str | None:
         side = self._OrderSide.BUY if order.side == Side.BUY else self._OrderSide.SELL
         try:
@@ -117,7 +126,36 @@ class AlpacaBroker:
             )
             return str(result.id)
         except Exception as exc:
+            if "fractional" in str(exc).lower():
+                return self._submit_order_by_qty(order, side)
             logger.error(f"Order failed for {order}: {exc}")
+            return None
+
+    def _submit_order_by_qty(self, order: Order, side) -> str | None:
+        """Fallback for securities that don't support fractional/notional orders."""
+        try:
+            price = self._get_last_price(order.ticker)
+            qty = math.floor(order.notional / price)
+            if qty < 1:
+                logger.error(
+                    f"Order skipped for {order.ticker}: notional ${order.notional:,.2f} "
+                    f"< price ${price:,.2f} (cannot buy 0 shares)"
+                )
+                return None
+            req = self._MarketOrderRequest(
+                symbol=order.ticker,
+                qty=qty,
+                side=side,
+                time_in_force=self._TimeInForce.DAY,
+            )
+            result = self._client.submit_order(req)
+            logger.info(
+                f"Order submitted (qty fallback): {order.side.value.upper()} {order.ticker} "
+                f"{qty} shares @ ~${price:,.2f} (notional ~${qty * price:,.2f}) -> id={result.id}"
+            )
+            return str(result.id)
+        except Exception as exc:
+            logger.error(f"Order failed (qty fallback) for {order}: {exc}")
             return None
 
     def submit_crypto_limit_order(
