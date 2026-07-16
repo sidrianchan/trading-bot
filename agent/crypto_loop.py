@@ -130,12 +130,17 @@ class CryptoPaperLoop:
         self.print_signal(signal, dry=False)
         prev_executed = state.last_executed_target
         executed = self._execute_target(signal.target, current_value, new_state)
-        if signal.target != prev_executed:
-            self.notify.rebalance(
-                "Crypto", signal.target or "USDC", signal.regime, current_value, signal.decision_reason
-            )
         if executed:
             new_state.last_executed_target = signal.target
+            if signal.target != prev_executed:
+                self.notify.rebalance(
+                    "Crypto", signal.target or "USDC", signal.regime, current_value, signal.decision_reason
+                )
+        else:
+            logger.error(
+                f"Crypto rebalance execution failed; position unchanged "
+                f"(target={signal.target or 'USDC'}, holding={prev_executed or 'USDC'})"
+            )
         new_state.last_eval_date = datetime.now(tz=self.et).date().isoformat()
         new_state.cash_value = self.scoped_value(new_state) if signal.target is None else 0.0
         self.save_state(new_state)
@@ -249,16 +254,21 @@ class CryptoPaperLoop:
 
         refreshed = self.broker.get_positions_for_symbols([desired])
         position_mv = float(refreshed["market_value"].sum()) if not refreshed.empty else 0.0
-        # Alpaca paper reports USDC/stable as cash (not a position), so also check state tracking
-        already_in_stable = (
-            desired == self.crypto_config.stable
-            and state.last_executed_target is None
-            and refreshed.empty
-        )
-        if position_mv >= current_value * 0.98 or already_in_stable:
+        if position_mv >= current_value * 0.98:
             logger.info(f"Crypto already positioned in {desired}; no buy needed")
             state.cash_value = 0.0 if desired in self.crypto_config.universe else current_value
             return True
+        if desired == self.crypto_config.stable:
+            # Parking: USD cash is economically equivalent to the stable, so skip
+            # the buy when stable position + free cash already covers scope.
+            # Covers Alpaca paper reporting USDC as cash, and residual dust that
+            # leaves the position just under the 98% line — a top-off limit order
+            # at 1.00 won't fill and just burns the retry budget.
+            free_cash = min(self.broker.get_cash(), self.crypto_config.capital)
+            if position_mv + free_cash >= current_value * 0.98:
+                logger.info(f"Crypto parked: {desired} position + cash covers scope; no top-off buy")
+                state.cash_value = current_value
+                return True
 
         # Cap to this bot's configured scope so it never spends the ETF bot's cash.
         available_cash = min(self.broker.get_cash(), self.crypto_config.capital)
