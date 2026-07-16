@@ -758,8 +758,18 @@ def cmd_momentum_paper(config: dict, dry_run: bool = False) -> None:
     except Exception as exc:
         logger.error(f"Initial check failed: {exc}", exc_info=True)
 
+    # Guard the scheduled job: an exception escaping schedule.run_pending()
+    # would break the while loop and kill the service on a transient
+    # yfinance/Alpaca error. Catching inside the job also lets schedule
+    # record the run, so a failure skips this cycle instead of hot-retrying.
+    def guarded_daily_check() -> None:
+        try:
+            daily_check()
+        except Exception as exc:
+            logger.error(f"Scheduled daily_check failed (will retry next cycle): {exc}", exc_info=True)
+
     # Schedule for 15:30 ET (Alpaca calendar uses NY time)
-    schedule.every().day.at("15:30", "America/New_York").do(daily_check)
+    schedule.every().day.at("15:30", "America/New_York").do(guarded_daily_check)
     logger.info("Schedule: daily check at 15:30 ET. Press Ctrl+C to stop.")
     while True:
         schedule.run_pending()

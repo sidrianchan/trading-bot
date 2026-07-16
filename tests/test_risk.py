@@ -50,29 +50,37 @@ class TestDrawdownMonitor:
 
 class TestKillSwitch:
     def test_not_triggered_by_default(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("KILL_SWITCH_FILE", str(tmp_path / ".kill_switch"))
         ks = KillSwitch()
         assert not ks.is_triggered()
 
     def test_trigger_creates_flag(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("KILL_SWITCH_FILE", str(tmp_path / ".kill_switch"))
         ks = KillSwitch()
         ks.trigger("test reason")
         assert ks.is_triggered()
         assert ks.reason() == "test reason"
 
     def test_reset_removes_flag(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("KILL_SWITCH_FILE", str(tmp_path / ".kill_switch"))
         ks = KillSwitch()
         ks.trigger("halt")
         ks.reset()
         assert not ks.is_triggered()
 
     def test_reset_when_not_triggered_is_safe(self, tmp_path, monkeypatch):
-        monkeypatch.chdir(tmp_path)
+        monkeypatch.setenv("KILL_SWITCH_FILE", str(tmp_path / ".kill_switch"))
         ks = KillSwitch()
         ks.reset()  # should not raise
         assert not ks.is_triggered()
+
+    def test_flag_path_is_cwd_independent(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("KILL_SWITCH_FILE", str(tmp_path / ".kill_switch"))
+        monkeypatch.chdir(tmp_path)
+        KillSwitch().trigger("halt from elsewhere")
+        monkeypatch.chdir(tmp_path.parent)
+        assert KillSwitch().is_triggered()
+        KillSwitch().reset()
 
 
 class TestRiskLimits:

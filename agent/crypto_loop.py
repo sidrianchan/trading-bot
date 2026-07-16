@@ -25,6 +25,17 @@ from signals.crypto_momentum import (
 )
 
 
+def _guarded(fn):
+    """Wrap a scheduled job so an exception can't escape schedule.run_pending()
+    and kill the 24/7 loop; a failure logs and skips this cycle instead."""
+    def wrapper():
+        try:
+            fn()
+        except Exception as exc:
+            logger.error(f"Scheduled {fn.__name__} failed (will retry next cycle): {exc}", exc_info=True)
+    return wrapper
+
+
 class CryptoPaperLoop:
     """24/7 paper loop for the BTC/ETH momentum strategy."""
 
@@ -195,10 +206,10 @@ class CryptoPaperLoop:
             raise RuntimeError("BROKER IS NOT IN PAPER MODE. ABORTING.")
         logger.info("Starting crypto paper loop. Schedule: Monday 09:00 ET rebalance, hourly circuit check, daily 08:00 ET summary")
         self.notify.startup("Crypto")
-        self.circuit_check()
-        schedule.every().monday.at("09:00", "America/New_York").do(self.rebalance_once)
-        schedule.every().hour.do(self.circuit_check)
-        schedule.every().day.at("08:00", "America/New_York").do(self.write_daily_summary)
+        _guarded(self.circuit_check)()
+        schedule.every().monday.at("09:00", "America/New_York").do(_guarded(self.rebalance_once))
+        schedule.every().hour.do(_guarded(self.circuit_check))
+        schedule.every().day.at("08:00", "America/New_York").do(_guarded(self.write_daily_summary))
         while True:
             schedule.run_pending()
             time.sleep(30)
