@@ -8,6 +8,7 @@ Usage:
     python main.py crypto-paper --dry-run  # show current crypto signal without orders
     python main.py crypto-paper      # start BTC/ETH crypto paper loop
     python main.py status --bot all  # show current portfolio/bot status
+    python main.py report            # send post-market daily Telegram report now
     python main.py kill              # trigger emergency kill switch
     python main.py reset-kill        # reset kill switch
     python main.py save-model        # save XGBoost architecture to models/
@@ -511,6 +512,81 @@ def cmd_health(config: dict) -> None:
     print("\n".join(lines))
 
 
+def cmd_daily_report(config: dict, broker=None, notify=None, force: bool = False) -> None:
+    """Build and send the post-market daily Telegram report.
+
+    Covers the whole Alpaca paper account (both bots): account value with day
+    and since-start P&L, current holdings, each bot's stance, and today's
+    trades/rebalances with the decision reasons (from logs/trade_journal.jsonl).
+
+    force=True sends even on non-trading days (manual `python main.py report`).
+    """
+    import json
+    from datetime import date, datetime
+    from zoneinfo import ZoneInfo
+
+    from execution.broker import AlpacaBroker
+    from monitor.notify import TelegramNotifier, read_journal
+    from signals.dual_momentum import V4Config
+
+    broker = broker or AlpacaBroker()
+    notify = notify or TelegramNotifier()
+    et = ZoneInfo("America/New_York")
+    today = datetime.now(tz=et).date()
+
+    if not force:
+        try:
+            from alpaca.trading.requests import GetCalendarRequest
+            cal = broker._client.get_calendar(GetCalendarRequest(start=today, end=today))
+            is_trading_day = any(c.date == today for c in cal)
+        except Exception as exc:
+            logger.warning(f"Calendar check failed ({exc}); falling back to weekday check")
+            is_trading_day = today.weekday() < 5
+        if not is_trading_day:
+            logger.info(f"{today} is not a trading day; skipping daily report")
+            return
+
+    equity, last_equity = broker.get_equity()
+    cash = broker.get_cash()
+    positions_df = broker.get_positions()
+    positions = [
+        (str(idx), float(row["market_value"]), float(row.get("unrealized_pnl", 0.0)))
+        for idx, row in positions_df.iterrows()
+    ]
+
+    start_capital = float(config.get("momentum_paper", {}).get("capital", 70_000.0)) + \
+        float(config.get("crypto", {}).get("capital", 30_000.0))
+
+    bot_lines = []
+    etf_state_path = Path("logs") / "momentum_state.json"
+    if etf_state_path.exists():
+        try:
+            etf_state = json.loads(etf_state_path.read_text())
+            holding = etf_state.get("last_target") or "CASH"
+            line = f"ETF: {holding}"
+            if etf_state.get("in_cb"):
+                needed = V4Config().reentry_confirmation_months + 1
+                line += (f" — circuit breaker cooldown "
+                         f"({etf_state.get('cb_confirm_count', 0)}/{needed} risk-on months)")
+            bot_lines.append(line)
+        except Exception as exc:
+            logger.warning(f"Could not read ETF state for report: {exc}")
+    crypto_state_path = Path("logs") / "crypto_state.json"
+    if crypto_state_path.exists():
+        try:
+            crypto_state = json.loads(crypto_state_path.read_text())
+            bot_lines.append(f"Crypto: {crypto_state.get('last_executed_target') or 'USDC'}")
+        except Exception as exc:
+            logger.warning(f"Could not read crypto state for report: {exc}")
+
+    events = read_journal(today.isoformat())
+    notify.daily_report(
+        today.isoformat(), equity, last_equity, start_capital, cash,
+        positions, bot_lines, events,
+    )
+    logger.info(f"Daily report sent: equity=${equity:,.2f}, {len(events)} events today")
+
+
 def cmd_momentum_paper(config: dict, dry_run: bool = False) -> None:
     """Live monthly paper loop for V4 dual-momentum on leveraged ETFs.
 
@@ -768,9 +844,17 @@ def cmd_momentum_paper(config: dict, dry_run: bool = False) -> None:
         except Exception as exc:
             logger.error(f"Scheduled daily_check failed (will retry next cycle): {exc}", exc_info=True)
 
+    def guarded_daily_report() -> None:
+        try:
+            cmd_daily_report(config, broker=broker, notify=notify)
+        except Exception as exc:
+            logger.error(f"Scheduled daily report failed (will retry next cycle): {exc}", exc_info=True)
+
     # Schedule for 15:30 ET (Alpaca calendar uses NY time)
     schedule.every().day.at("15:30", "America/New_York").do(guarded_daily_check)
-    logger.info("Schedule: daily check at 15:30 ET. Press Ctrl+C to stop.")
+    # Post-market portfolio report (skips non-trading days internally)
+    schedule.every().day.at("16:15", "America/New_York").do(guarded_daily_report)
+    logger.info("Schedule: daily check at 15:30 ET, daily report at 16:15 ET. Press Ctrl+C to stop.")
     while True:
         schedule.run_pending()
         time.sleep(30)
@@ -799,6 +883,7 @@ def cli() -> None:
         "momentum-backtest":  lambda: cmd_momentum_backtest(config),
         "status":             lambda: cmd_status(config, bot=bot),
         "health":             lambda: cmd_health(config),
+        "report":             lambda: cmd_daily_report(config, force=True),
         "kill":               cmd_kill,
         "reset-kill":         cmd_reset_kill,
         "save-model":         lambda: cmd_save_model(config),

@@ -61,6 +61,11 @@ class AlpacaBroker:
         account = self._client.get_account()
         return float(account.cash)
 
+    def get_equity(self) -> tuple[float, float]:
+        """Return (equity, last_equity) — last_equity is prior trading day's close."""
+        account = self._client.get_account()
+        return float(account.equity), float(account.last_equity)
+
     def get_positions(self) -> pd.DataFrame:
         positions = self._client.get_all_positions()
         if not positions:
