@@ -77,15 +77,30 @@ class TelegramNotifier:
         self.token = os.getenv("TELEGRAM_BOT_TOKEN", "")
         self.chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
         self._enabled = bool(self.token and self.chat_id)
-
-    def send(self, text: str) -> None:
         if not self._enabled:
-            return
+            logger.warning(
+                "Telegram notifications DISABLED: TELEGRAM_BOT_TOKEN and/or "
+                "TELEGRAM_CHAT_ID missing from environment"
+            )
+
+    def send(self, text: str) -> bool:
+        """Send a message. Returns True only on confirmed delivery to Telegram."""
+        if not self._enabled:
+            logger.warning("Telegram message NOT sent (notifier disabled)")
+            return False
         try:
             url = f"https://api.telegram.org/bot{self.token}/sendMessage"
-            httpx.post(url, json={"chat_id": self.chat_id, "text": text, "parse_mode": "HTML"}, timeout=10)
+            resp = httpx.post(
+                url, json={"chat_id": self.chat_id, "text": text, "parse_mode": "HTML"}, timeout=10
+            )
+            body = resp.json()
+            if not body.get("ok"):
+                logger.error(f"Telegram API rejected message: {body}")
+                return False
+            return True
         except Exception as exc:
             logger.warning(f"Telegram notify failed: {exc}")
+            return False
 
     def trade(self, bot: str, action: str, symbol: str, value: float, reason: str = "") -> None:
         journal_event({"event": "trade", "bot": bot, "action": action, "symbol": symbol,

@@ -584,7 +584,8 @@ def cmd_daily_report(config: dict, broker=None, notify=None, force: bool = False
         today.isoformat(), equity, last_equity, start_capital, cash,
         positions, bot_lines, events,
     )
-    logger.info(f"Daily report sent: equity=${equity:,.2f}, {len(events)} events today")
+    logger.info(f"Daily report generated: equity=${equity:,.2f}, {len(events)} events today "
+                "(delivery status logged by notifier)")
 
 
 def cmd_momentum_paper(config: dict, dry_run: bool = False) -> None:
