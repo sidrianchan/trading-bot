@@ -65,6 +65,103 @@ def _fetch_yfinance(tickers: list[str], start: str, end: str) -> pd.DataFrame:
     return close
 
 
+def fetch_daily_ohlcv(
+    tickers: list[str],
+    start: str,
+    end: str,
+    cache_dir: str = "data/cache/daily",
+) -> dict[str, pd.DataFrame]:
+    """Fetch real daily OHLC **and volume** bars, one DataFrame per ticker.
+
+    `fetch_prices` above returns adjusted closes only, which is why
+    `backtester/ta_engine.py::_close_only_to_ohlc` had to synthesize daily
+    highs/lows from consecutive closes with volume hard-coded to zero. Anything
+    that reasons about daily bar structure or volume-at-price needs this instead.
+
+    Returns ticker -> DataFrame[open, high, low, close, volume] with a
+    tz-naive DatetimeIndex. Tickers with no data are omitted from the result.
+    Parquet-cached per ticker per range, mirroring `fetch_intraday_bars_range`.
+    """
+    from pathlib import Path
+
+    cache_path = Path(cache_dir)
+    cache_path.mkdir(parents=True, exist_ok=True)
+
+    results: dict[str, pd.DataFrame] = {}
+    to_fetch: list[str] = []
+    for ticker in sorted(set(tickers)):
+        pq = cache_path / f"{ticker}_{start}_{end}.parquet"
+        if pq.exists():
+            try:
+                results[ticker] = pd.read_parquet(pq)
+                continue
+            except Exception:
+                pass
+        to_fetch.append(ticker)
+
+    if not to_fetch:
+        logger.info(f"Daily OHLCV: all {len(results)} tickers from parquet cache")
+        return results
+
+    logger.info(f"Daily OHLCV: downloading {len(to_fetch)} tickers ({start} → {end})")
+    chunk_size = 50
+    for i in range(0, len(to_fetch), chunk_size):
+        chunk = to_fetch[i : i + chunk_size]
+        try:
+            raw = yf.download(
+                chunk,
+                start=start,
+                end=end,
+                auto_adjust=True,
+                group_by="ticker",
+                progress=False,
+                threads=True,
+            )
+        except Exception as exc:
+            logger.warning(f"Daily OHLCV fetch failed for chunk {chunk[:3]}…: {exc}")
+            continue
+        if raw is None or raw.empty:
+            continue
+
+        for ticker in chunk:
+            df = _extract_ohlcv(raw, ticker, single=len(chunk) == 1)
+            if df is None or df.empty:
+                continue
+            results[ticker] = df
+            try:
+                df.to_parquet(cache_path / f"{ticker}_{start}_{end}.parquet")
+            except Exception as exc:
+                logger.warning(f"Daily OHLCV parquet write failed for {ticker}: {exc}")
+
+    logger.info(f"Daily OHLCV: {len(results)} tickers available")
+    return results
+
+
+def _extract_ohlcv(raw: pd.DataFrame, ticker: str, single: bool) -> pd.DataFrame | None:
+    """Pull one ticker's OHLCV frame out of a yfinance download."""
+    if isinstance(raw.columns, pd.MultiIndex):
+        if ticker not in raw.columns.get_level_values(0):
+            return None
+        df = raw[ticker].copy()
+    elif single:
+        df = raw.copy()
+    else:
+        return None
+
+    df.columns = [str(c).lower() for c in df.columns]
+    needed = ["open", "high", "low", "close", "volume"]
+    if not set(needed).issubset(df.columns):
+        return None
+
+    df = df[needed].dropna(how="all")
+    # A bar with no volume is a non-trading artifact, not a real session.
+    df = df[df["close"].notna() & df["volume"].notna()]
+    if df.empty:
+        return None
+    df.index = pd.to_datetime(df.index).tz_localize(None)
+    return df.sort_index()
+
+
 def fetch_intraday_bars(
     tickers: list[str],
     date: str,

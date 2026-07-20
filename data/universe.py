@@ -88,6 +88,54 @@ def get_intraday_universe(sources: list[str] | None = None) -> list[str]:
     return sorted(tickers)
 
 
+def apply_size_filter(
+    bars_by_ticker: dict,
+    min_median_dollar_vol: float = 10_000_000.0,
+    window: int = 60,
+    min_price: float = 5.0,
+    min_bars: int = 250,
+) -> dict:
+    """Drop small/illiquid names using a POINT-IN-TIME size proxy.
+
+    Size is proxied by rolling median dollar volume computed from the daily bars
+    themselves, so the filter uses only information available on each date.
+    Deliberately NOT yfinance `.info` market cap: that is today's value applied
+    retroactively to historical dates, which injects look-ahead bias straight
+    into the universe definition.
+
+    A ticker is kept if the median of its rolling `window`-day median dollar
+    volume clears the floor over the sample. Returns the filtered dict.
+
+    NOTE: the candidate pool itself (get_sp500_tickers / get_russell1000_tickers)
+    is *current* index membership, so the universe remains survivorship-biased
+    upward. This filter does not fix that, and studies built on it must be framed
+    as differences between cohorts rather than absolute performance claims.
+    """
+    kept: dict = {}
+    dropped_short = dropped_cheap = dropped_illiquid = 0
+
+    for ticker, df in bars_by_ticker.items():
+        if df is None or len(df) < min_bars:
+            dropped_short += 1
+            continue
+        if float(df["close"].median()) < min_price:
+            dropped_cheap += 1
+            continue
+        dollar_vol = df["close"] * df["volume"]
+        rolling = dollar_vol.rolling(window, min_periods=max(20, window // 3)).median()
+        if float(rolling.median()) < min_median_dollar_vol:
+            dropped_illiquid += 1
+            continue
+        kept[ticker] = df
+
+    logger.info(
+        f"Size filter: {len(bars_by_ticker)} → {len(kept)} tickers "
+        f"(dropped {dropped_short} short-history, {dropped_cheap} sub-${min_price:.0f}, "
+        f"{dropped_illiquid} below ${min_median_dollar_vol/1e6:.0f}M median $vol)"
+    )
+    return kept
+
+
 def apply_liquidity_filter(
     snapshots: list,
     min_adv_usd: float = 10_000_000,
