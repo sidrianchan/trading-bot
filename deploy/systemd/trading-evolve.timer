@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Trading Bot Strategy Evolution Cycle Weekly
+
+[Timer]
+# Saturday morning: markets are closed, so a cycle can never race a rebalance.
+OnCalendar=Sat *-*-* 09:00:00 America/New_York
+Persistent=true
+Unit=trading-evolve.service
+
+[Install]
+WantedBy=timers.target

@@ -1,0 +1,11 @@
+[Unit]
+Description=Run Trading Bot Shadow Step Daily
+
+[Timer]
+# After the US close (16:00 ET) so shadow books mark against final ETF prices.
+OnCalendar=*-*-* 17:00:00 America/New_York
+Persistent=true
+Unit=trading-evolve-shadow.service
+
+[Install]
+WantedBy=timers.target

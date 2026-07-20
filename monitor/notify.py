@@ -128,6 +128,35 @@ class TelegramNotifier:
         )
         self.send(msg)
 
+    def proposal(
+        self,
+        proposal_id: str,
+        strategy_id: str,
+        params: dict,
+        hypothesis: str,
+        expected: dict,
+        shadow_summary: str,
+    ) -> None:
+        """Strategy-promotion proposal from the evolution agent. Approval is a
+        human CLI action on the droplet; this message carries the exact command."""
+        journal_event({"event": "evolve_proposal", "bot": "Evolve",
+                       "proposal_id": proposal_id, "reason": hypothesis})
+        param_lines = "\n".join(f"  {k}: {v}" for k, v in sorted(params.items()))
+        msg = (
+            f"🧬 <b>[Evolve] Promotion proposal {proposal_id}</b>\n"
+            f"Strategy: {strategy_id}\n"
+            f"Hypothesis: {hypothesis}\n"
+            f"Params:\n{param_lines}\n"
+            f"Backtest expectation: CAGR {expected.get('cagr', 0):+.1%}, "
+            f"Sharpe {expected.get('sharpe', 0):.2f}, MaxDD {expected.get('max_dd', 0):+.1%}\n"
+            f"Shadow: {shadow_summary}\n"
+            f"Note: shadow validates plumbing and the drawdown envelope, not alpha — "
+            f"statistical confidence comes from the backtest + holdout.\n\n"
+            f"Approve:  python main.py evolve approve {proposal_id}\n"
+            f"Reject:   python main.py evolve reject {proposal_id}"
+        )
+        self.send(msg)
+
     def startup(self, bot: str) -> None:
         self.send(f"✅ <b>[{bot}]</b> Bot started on DigitalOcean")
 

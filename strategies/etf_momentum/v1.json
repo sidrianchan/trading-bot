@@ -1,0 +1,31 @@
+{
+  "strategy_id": "etf_momentum",
+  "version": 1,
+  "family": "dual_momentum_etf",
+  "params": {
+    "abs_lookback": 126,
+    "rel_lookback": 63,
+    "skip": 21,
+    "cb_threshold": 0.25,
+    "reentry_confirmation_months": 2
+  },
+  "status": "active",
+  "capital_fraction": 1.0,
+  "lineage": {
+    "parent": null,
+    "proposal_id": null,
+    "created_by": "migration"
+  },
+  "provenance": {
+    "backtest_run_id": null,
+    "expected": {
+      "cagr": 0.249,
+      "sharpe": 0.74,
+      "max_dd": -0.678
+    },
+    "shadow": null,
+    "approved_by": null,
+    "approved_at": null
+  },
+  "created_at": "2026-07-20T00:54:21.784451+00:00"
+}

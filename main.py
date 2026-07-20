@@ -14,6 +14,8 @@ Usage:
     python main.py save-model        # save XGBoost architecture to models/
     python main.py backtest          # run legacy walk-forward factor backtest
     python main.py momentum-backtest # run V4 leveraged ETF dual-momentum backtest
+    python main.py evolve status     # show strategy registry / evolution state
+    python main.py evolve seed       # register the live strategies in the registry
 """
 from __future__ import annotations
 
@@ -615,8 +617,16 @@ def cmd_momentum_paper(config: dict, dry_run: bool = False) -> None:
     from execution.orders import Order, Side
     from risk.kill_switch import KillSwitch
 
-    cfg = V4Config()
-    capital = float(config.get("momentum_paper", {}).get("capital", 70_000.0))
+    from evolve import registry
+
+    # The registry is the source of truth for which strategy version runs live.
+    # resolve_config falls back to V4Config() on any failure, so an absent or
+    # broken registry leaves this loop behaving exactly as it did pre-registry.
+    cfg = registry.resolve_config("etf_momentum", V4Config())
+    capital = (
+        float(config.get("momentum_paper", {}).get("capital", 70_000.0))
+        * registry.capital_fraction("etf_momentum")
+    )
     state_path = Path("logs") / "momentum_state.json"
     state_path.parent.mkdir(exist_ok=True)
     log_path = Path("logs") / "paper_loop.log"
@@ -861,6 +871,12 @@ def cmd_momentum_paper(config: dict, dry_run: bool = False) -> None:
         time.sleep(30)
 
 
+def cmd_evolve(config: dict) -> None:
+    from evolve.cli import run_evolve_command
+
+    run_evolve_command(config, sys.argv[2:])
+
+
 def cli() -> None:
     config = load_config()
     setup_logging(config)
@@ -885,6 +901,7 @@ def cli() -> None:
         "status":             lambda: cmd_status(config, bot=bot),
         "health":             lambda: cmd_health(config),
         "report":             lambda: cmd_daily_report(config, force=True),
+        "evolve":             lambda: cmd_evolve(config),
         "kill":               cmd_kill,
         "reset-kill":         cmd_reset_kill,
         "save-model":         lambda: cmd_save_model(config),

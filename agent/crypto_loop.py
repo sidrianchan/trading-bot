@@ -56,12 +56,12 @@ class CryptoPaperLoop:
         self.notify = TelegramNotifier()
 
     @staticmethod
-    def _build_config(config: dict) -> CryptoMomentumConfig:
+    def _yaml_config(config: dict, capital: float) -> CryptoMomentumConfig:
         abs_cfg = config.get("absolute_momentum", {})
         rel_cfg = config.get("relative_momentum", {})
         cb_cfg = config.get("circuit_breaker", {})
         return CryptoMomentumConfig(
-            capital=float(config.get("capital", 30_000.0)),
+            capital=capital,
             universe=tuple(config.get("universe", ["BTC/USD", "ETH/USD"])),
             stable=str(config.get("stable", "USDC/USD")),
             abs_lookback=int(abs_cfg.get("lookback_days", 84)),
@@ -69,6 +69,24 @@ class CryptoPaperLoop:
             rel_lookback=int(rel_cfg.get("lookback_days", 7)),
             rel_skip=int(rel_cfg.get("skip_days", 14)),
             cb_threshold=float(cb_cfg.get("max_drawdown_from_peak", -0.40)),
+        )
+
+    @staticmethod
+    def _build_config(config: dict) -> CryptoMomentumConfig:
+        from evolve import registry
+
+        # The registry is the source of truth for which strategy version runs
+        # live. Capital is a runtime concern (config.yaml x the promotion ramp),
+        # not an evolvable parameter, so it is passed as an override rather than
+        # stored in the registry record. resolve_config falls back to the
+        # config.yaml values on any registry failure.
+        capital = float(config.get("capital", 30_000.0)) * registry.capital_fraction(
+            "crypto_momentum"
+        )
+        return registry.resolve_config(
+            "crypto_momentum",
+            CryptoPaperLoop._yaml_config(config, capital),
+            overrides={"capital": capital},
         )
 
     def load_state(self) -> CryptoMomentumState:

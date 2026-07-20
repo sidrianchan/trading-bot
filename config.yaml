@@ -109,6 +109,17 @@ ta:
     spread_bps: 1                # 0.01% per trade as spread cost
 
 
+# ─────────────────────────────────────────────────────────────────
+# Strategy-evolution agent (tunables only — hard safety limits are
+# hard-coded in evolve/guardrails.py and are NOT configurable here)
+# ─────────────────────────────────────────────────────────────────
+evolve:
+  enabled: true
+  model: claude-opus-4-8
+  cadence: weekly_saturday_0900     # systemd timer; market closed
+  shadow_capital: 10000             # virtual book size per shadow candidate
+  digest_weeks: 8                   # journal lookback in the evidence digest
+
 momentum_paper:
   capital: 70000
 
