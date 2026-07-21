@@ -121,10 +121,10 @@ evolve:
   digest_weeks: 8                   # journal lookback in the evidence digest
 
 momentum_paper:
-  capital: 70000
+  capital: 7000
 
 crypto:
-  capital: 30000
+  capital: 3000
   universe: [BTC/USD, ETH/USD]
   stable: USDC/USD
   absolute_momentum:
