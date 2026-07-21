@@ -76,6 +76,90 @@
   2020–2025 remains sealed. Two S/R premises (hold, break) now measured and killed before a
   single line of strategy code — the point of probing first.
 
+- **Trend-pullback / dynamic mean-reversion — killed at the measurement stage, 2026-07-21.**
+  Pivoted off *static* horizontal levels to a *dynamic* mean: in a strict structural uptrend
+  (20>50>200 EMA held ≥10 bars at t-1), does a pullback that touches the rising 20-EMA bounce
+  a full symmetric 1R (±1·ATR20), and does it bounce *more* the more "stretched" the trend was
+  first (trend elasticity)? Answer: **no edge, and no gradient.** (`scripts/trend_pullback_calibration.py`.)
+
+  Study: 37,906 touches, 135 tickers, 2010–2019. Trigger line = 20-EMA as of t-1 (touch can't
+  move the line it touched); stretch = max ATR-distance above the mean over the leg since the
+  last touch, sealed at t-1; ATR sized at t-1; entry at the open after the touch; intrabar
+  target+stop ties scored as losses (conservative). Matched control = a **Ghost Mean**: the
+  20-EMA shifted a random 0.5–1.5 ATR (either side, ±0.2 dead-zone excluded), touched and
+  resolved under identical regime/1R rules — the base rate of buying any random dip in the same
+  name at the same time. Pre-registered kill criteria, **all 3 failed:**
+  - Precision Lift: real bounce 53.5% − ghost 54.1% = **−0.6pp** (needed ≥5pp) — FAIL (negative)
+  - Elasticity Gradient: High − Low tercile = **−0.8pp**, p=0.20 (needed ≥5pp, p<0.05) — FAIL
+  - Momentum: median 3 bars to 1R vs ghost 2 bars — FAIL (slower, not faster)
+
+  The real bounce rate sits *below* the drift-neutral ghost: the apparent mean-reversion is
+  entirely bull-market drift, and the most-stretched pullbacks bounce slightly *less*, not more.
+  Methodological note: the literal touch rule (low ≤ EMA20[t-1] ≤ high) fires on frequent daily
+  straddles of the EMA, so ~2/3 of touches have ~0 stretch — the Stretch axis is degenerate for
+  most of the sample. But the conclusion is robust to this: even the genuinely-stretched top of
+  the High tercile (up to ~13 ATR) shows no lift. Reviving the Stretch hypothesis would require
+  a *definition* change (de-bounce consecutive touches / require a minimum prior excursion), not
+  a code fix — not pursued, because the overall placebo-controlled lift is already negative.
+
+  **Do not build a 20-EMA pullback long on trend stretch.** Same reusable harness; 2020–2025
+  remains sealed. Three premises (static hold, static break, dynamic pullback) now measured and
+  killed before any strategy code.
+
+- **TA confluence ("does stacking indicators raise the win rate?") — killed at the measurement
+  stage, 2026-07-21.** The recurring question after three single-variable kills: does *combining*
+  TA conditions rescue the pullback entry? Probed directly — and note the *raw* win rate is a
+  trap, because in a drifting-up market more filters = more selectivity = higher raw rate *and*
+  higher base rate together. So we measured lift over a **locally-matched placebo** (a random
+  same-year bar in the same name). (`scripts/confluence_calibration.py`.)
+
+  Study: 59,081 pullback touches, 126 tickers, **widened to 2000–2019** (adds dot-com + GFC bear
+  regimes; survivorship caveat: current S&P 500 membership applied back to 2000, so the cohort is
+  upward-biased — read the cross-bucket gradient, not the absolute rate). Each touch scored 0–5 by
+  pre-registered sealed-at-t-1 conditions: trend maturity (stack ≥30 bars), RSI≤55, MACD hist ≥0,
+  S/R-zone confluence (strength ≥0.4), controlled pullback (stretch ≤3 ATR). Kill criteria, 2 of 3
+  failed (3rd is a selectivity guard):
+  - Top-bucket (4–5 conds) lift vs matched ghost: **−1.5pp, p=0.02** (needed ≥+5pp) — FAIL, and
+    *significantly negative*: the most-confluent setups slightly **underperform** a random
+    same-year entry.
+  - Lift rises with confluence: **rho=−0.50, gradient −0.0pp** (needed ≥0.6, ≥5pp) — FAIL.
+  - Selectivity mirage guard (raw up but lift flat): PASS — raw rate is *also* flat/down, so it
+    isn't even the usual selectivity illusion; there is simply no signal.
+
+  **Every** confluence level has negative placebo-adjusted lift (−0.3pp to −2.9pp). A 20-ticker
+  smoke slice showed a spurious monotone gradient (rho=+1.0) that **vanished at full n** — a
+  textbook small-sample artefact, and the reason the full run is the decider. Combining these TA
+  conditions does not create edge; it slightly destroys it. **Do not build a confluence/multi-
+  factor TA entry.** Four premises now measured and killed before a line of strategy code. Same
+  harness; 2020→now still sealed for a one-shot final validation.
+
+- **Cross-sectional relative strength (the "Beach Ball" thesis) — killed at the measurement
+  stage, 2026-07-21.** Officially pivoted off single-stock price-action geometry (four kills) to
+  an *orthogonal, cross-sectional* signal: a stock's relative-strength rank against its peers.
+  Thesis: when SPY makes a local pullback and reverses, do top-decile-RS (D10) names snap back
+  (win a symmetric 1R) more than market-beta (D5) and laggards (D1)? **Verdict: STOP — all four
+  gates failed.** (`scripts/relative_strength_calibration.py`.)
+
+  Study: 108,597 events, 126 tickers, 2000–2019. SPY trigger = a ≥1.5·ATR20 drawdown off the
+  10-bar high (at t-1) followed by a reversal bar on day t (green close OR close > prior high).
+  On each trigger, every active name is ranked cross-sectionally by trailing-10-bar log excess
+  return vs SPY (all at t-1) into deciles, entered at the open of t+1, resolved to a symmetric
+  ±1·ATR20(t-1) 1R with gap-aware forward resolution (gap-open checked before intrabar high/low;
+  same-bar collision = conservative loss). Kill criteria, **4 of 4 failed:**
+  - Gradient win(D10)−win(D1): **+0.8pp**, p=0.21 (needed ≥8pp, p<0.01) — FAIL.
+  - Lift over beta win(D10)−win(D5): **−0.2pp** (needed ≥5pp) — FAIL.
+  - Speed: median 3 bars (D10) vs 2 (D5) — FAIL (slower).
+  - Monotonicity Spearman rho(decile, win): **+0.36** (needed ≥0.70) — FAIL.
+
+  Win rates are **dead flat across all ten deciles (52.4–53.5%)**; RS rank carries no reversal
+  edge, and the uniform ~53% is just upward drift on a symmetric long. Statistical caveat recorded
+  in the script and honoured here: events are heavily cross-sectionally clustered (one SPY reversal
+  fires hundreds of simultaneous events; reversals cluster in time), so the z p-values are
+  anti-conservative — but that only makes a *passing* gate suspect, and nothing passed. **Do not
+  build a relative-strength reversal setup.** Five premises now measured and killed before any
+  strategy code — the first cross-sectional one included. Same seal; 2020→now still reserved for a
+  single final validation.
+
 ## Next review date
 
 June 30, 2026 — 30-day paper trading results. Live capital discussion only after this date.
