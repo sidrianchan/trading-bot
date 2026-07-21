@@ -335,7 +335,7 @@ def cmd_status(config: dict, bot: str = "all") -> None:
         etf_positions = broker.get_positions_for_symbols(etf_symbols)
         etf_value = 0.0 if etf_positions.empty else float(etf_positions["market_value"].sum())
         print(f"\nETF Bot")
-        print(f"Capital Base    : ${config.get('momentum_paper', {}).get('capital', 70000):>10,.2f}")
+        print(f"Capital Base    : ${config.get('momentum_paper', {}).get('capital', 7000):>10,.2f}")
         print(f"Scoped Positions: {len(etf_positions)}")
         print(f"Scoped Value    : ${etf_value:>10,.2f}")
         if not etf_positions.empty:
@@ -347,7 +347,7 @@ def cmd_status(config: dict, bot: str = "all") -> None:
         crypto_positions = broker.get_positions_for_symbols(crypto_symbols)
         crypto_value = 0.0 if crypto_positions.empty else float(crypto_positions["market_value"].sum())
         print(f"\nCrypto Bot")
-        print(f"Capital Base    : ${crypto_cfg.get('capital', 30000):>10,.2f}")
+        print(f"Capital Base    : ${crypto_cfg.get('capital', 3000):>10,.2f}")
         print(f"Scoped Positions: {len(crypto_positions)}")
         print(f"Scoped Value    : ${crypto_value:>10,.2f}")
         if not crypto_positions.empty:
@@ -397,7 +397,7 @@ def _crypto_config_from_yaml(config: dict):
     rel_cfg = crypto.get("relative_momentum", {})
     cb_cfg = crypto.get("circuit_breaker", {})
     return CryptoMomentumConfig(
-        capital=float(crypto.get("capital", 30000)),
+        capital=float(crypto.get("capital", 3000)),
         universe=tuple(crypto.get("universe", ["BTC/USD", "ETH/USD"])),
         stable=crypto.get("stable", "USDC/USD"),
         abs_lookback=int(abs_cfg.get("lookback_days", 84)),
@@ -450,7 +450,7 @@ def cmd_momentum_backtest(config: dict) -> None:
     from signals.dual_momentum import V4Config
 
     cfg = V4Config()
-    capital = float(config.get("momentum_paper", {}).get("capital", 70_000.0))
+    capital = float(config.get("momentum_paper", {}).get("capital", 7_000.0))
     print("\nFetching ETF prices (TQQQ / UPRO / SOXL / TLT / SPY) …")
     prices = fetch_etf_prices(start="2010-03-01", end="2024-12-31")
     result = run_dual_momentum_backtest(prices, cfg, initial_capital=capital)
@@ -556,8 +556,8 @@ def cmd_daily_report(config: dict, broker=None, notify=None, force: bool = False
         for idx, row in positions_df.iterrows()
     ]
 
-    start_capital = float(config.get("momentum_paper", {}).get("capital", 70_000.0)) + \
-        float(config.get("crypto", {}).get("capital", 30_000.0))
+    start_capital = float(config.get("momentum_paper", {}).get("capital", 7_000.0)) + \
+        float(config.get("crypto", {}).get("capital", 3_000.0))
 
     bot_lines = []
     etf_state_path = Path("logs") / "momentum_state.json"
@@ -624,7 +624,7 @@ def cmd_momentum_paper(config: dict, dry_run: bool = False) -> None:
     # broken registry leaves this loop behaving exactly as it did pre-registry.
     cfg = registry.resolve_config("etf_momentum", V4Config())
     capital = (
-        float(config.get("momentum_paper", {}).get("capital", 70_000.0))
+        float(config.get("momentum_paper", {}).get("capital", 7_000.0))
         * registry.capital_fraction("etf_momentum")
     )
     state_path = Path("logs") / "momentum_state.json"

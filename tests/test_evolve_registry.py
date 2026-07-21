@@ -13,7 +13,7 @@ from signals.dual_momentum import V4Config
 
 APP_CONFIG = {
     "crypto": {
-        "capital": 30_000,
+        "capital": 3_000,
         "universe": ["BTC/USD", "ETH/USD"],
         "stable": "USDC/USD",
         "absolute_momentum": {"lookback_days": 84, "skip_days": 14},
@@ -38,7 +38,7 @@ def test_etf_default_params_build_production_config():
 
 def test_crypto_default_params_build_production_config():
     family = get_family("crypto_momentum")
-    cfg = family.build_config(family.default_params(), overrides={"capital": 30_000.0})
+    cfg = family.build_config(family.default_params(), overrides={"capital": 3_000.0})
     assert cfg == CryptoMomentumConfig()
 
 
@@ -162,7 +162,7 @@ def test_seeded_registry_reproduces_todays_configs():
     assert etf_cfg == V4Config()
 
     crypto_cfg = registry.resolve_config(
-        "crypto_momentum", fallback_cfg=None, overrides={"capital": 30_000.0}
+        "crypto_momentum", fallback_cfg=None, overrides={"capital": 3_000.0}
     )
     assert crypto_cfg == CryptoMomentumConfig()
 
@@ -229,7 +229,7 @@ def test_crypto_loop_resolves_promoted_version_and_keeps_capital_override():
 
     cfg = CryptoPaperLoop._build_config(APP_CONFIG["crypto"])
     assert cfg.rel_lookback == 14
-    assert cfg.capital == 30_000.0
+    assert cfg.capital == 3_000.0
 
 
 def test_live_loops_fall_back_to_yaml_when_registry_empty():

@@ -80,7 +80,7 @@ class CryptoPaperLoop:
         # not an evolvable parameter, so it is passed as an override rather than
         # stored in the registry record. resolve_config falls back to the
         # config.yaml values on any registry failure.
-        capital = float(config.get("capital", 30_000.0)) * registry.capital_fraction(
+        capital = float(config.get("capital", 3_000.0)) * registry.capital_fraction(
             "crypto_momentum"
         )
         return registry.resolve_config(

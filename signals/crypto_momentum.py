@@ -9,7 +9,7 @@ import pandas as pd
 
 @dataclass(frozen=True)
 class CryptoMomentumConfig:
-    capital: float = 30_000.0
+    capital: float = 3_000.0
     universe: tuple[str, str] = ("BTC/USD", "ETH/USD")
     stable: str = "USDC/USD"
     abs_lookback: int = 84

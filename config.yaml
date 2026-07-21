@@ -6,7 +6,7 @@ universe:
     min_price: 5.00                # minimum price (excludes penny stocks)
 
 portfolio:
-  initial_capital: 100_000.0
+  initial_capital: 10_000.0
   max_concurrent_positions: 5      # focus over diversification
   max_position_value_pct: 0.10     # 10% of portfolio per name (hard cap)
   max_per_sector: 2                # max 2 concurrent positions in same GICS sector
