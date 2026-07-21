@@ -50,6 +50,32 @@
   `signals/price_action/volume_profile.py`, `signals/price_action/level_quality.py`,
   and the calibration harness. 2020–2025 was deliberately left unexamined.
 
+- **Swing S/R breakdown-short — killed at the measurement stage, 2026-07-21.** The v7
+  study surfaced one anomaly worth chasing: the strongest zones (decile 10) *held less*
+  than moderate ones, suggesting obvious support is swept for liquidity. We probed the
+  short-side mirror directly: when a strong support breaks down cleanly, does price flush?
+  Answer: **no relationship at all.** (`scripts/breakdown_calibration.py`.)
+
+  Study: 8,143 clean breakdowns, 135 tickers, 2010–2019. Observation moved from the touch
+  to the break; strength sealed at the last rebuild, ATR/volume sealed at b-1, entry at the
+  open after the break. Outcome = flush (hit 1R down before a close back above hi+0.2·ATR)
+  vs sweep (that reclaim within 5 bars) vs neither. Matched control = a structureless ghost
+  band of identical width placed 0.5–5 ATR below, broken under identical rules. Kill
+  criteria, 2 of 3 failed:
+  - Tercile spread flush(D8-10) − flush(D1-3): **+0.0pp**, p=0.98 — FAIL (dead flat)
+  - D10 flush (47.0%) − ghost-band flush (43.1%): **+3.8pp** (needed ≥5pp) — FAIL
+  - D10 flush (47.0%) ≥ D10 sweep (16.3%): PASS (breaks aren't *primarily* bear traps)
+
+  Spearman rho(decile, flush) = **−0.152**: flush rate, if anything, *falls* slightly with
+  strength. The base rate of a flush after *any* clean break is ~43%; zone strength adds at
+  most ~4pp and is non-monotone. The v7 hold-side anomaly does **not** invert into a
+  tradeable breakdown short — strong support breaking flushes no more reliably than a random
+  band breaking. Regime is again nearly flat (uptrend flush 45.1% vs downtrend 43.5%).
+
+  **Do not build a breakdown-short on level strength either.** Same reusable harness;
+  2020–2025 remains sealed. Two S/R premises (hold, break) now measured and killed before a
+  single line of strategy code — the point of probing first.
+
 ## Next review date
 
 June 30, 2026 — 30-day paper trading results. Live capital discussion only after this date.
