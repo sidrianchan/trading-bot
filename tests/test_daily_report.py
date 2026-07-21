@@ -96,3 +96,23 @@ class TestDailyReport:
         )
         assert "No trades today" in msg
         assert "+0.00%" in msg
+
+    def test_report_escapes_html_unsafe_reasons(self, monkeypatch):
+        """Regression: an unescaped '<=' or '&' in a reason broke Telegram's
+        HTML parser ("can't parse entities: Unsupported start tag")."""
+        notify = self._notifier(monkeypatch)
+        msg = notify.daily_report(
+            "2026-07-20", 100_000.0, 100_000.0, 100_000.0, 100_000.0,
+            positions=[("SOXL", 10_000.0, 50.0)],
+            bot_lines=["ETF: score <= 70 & RSI < 30"],
+            events=[
+                {"event": "trade", "bot": "ETF", "action": "SELL", "symbol": "SOXL",
+                 "value": 10_000.0, "reason": "trend score <= threshold & MACD < 0"},
+            ],
+        )
+        assert "score &lt;= 70 &amp; RSI &lt; 30" in msg
+        assert "trend score &lt;= threshold &amp; MACD &lt; 0" in msg
+        # Only the deliberate <b>...</b> tags we control should survive unescaped.
+        import re
+        tags = re.findall(r"<[^>]+>", msg)
+        assert all(t in ("<b>", "</b>") for t in tags)

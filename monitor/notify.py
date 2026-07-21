@@ -1,6 +1,7 @@
 """Telegram push notifications for trade events."""
 from __future__ import annotations
 
+import html
 import json
 import os
 from datetime import datetime
@@ -12,6 +13,16 @@ import httpx
 from loguru import logger
 
 _ET = ZoneInfo("America/New_York")
+
+
+def _esc(value: object) -> str:
+    """Escape dynamic text for Telegram HTML parse_mode.
+
+    Telegram's HTML parser treats unescaped <, >, & as markup — a stray "<="
+    or "&" in a reason/hypothesis string (e.g. "score <= 70") makes it reject
+    the whole message with "can't parse entities".
+    """
+    return html.escape(str(value), quote=False)
 
 
 def _journal_path() -> Path:
@@ -56,19 +67,22 @@ def read_journal(date_iso: str) -> list[dict]:
 
 def _format_event(entry: dict) -> str:
     event = entry.get("event")
-    bot = entry.get("bot", "?")
+    bot = _esc(entry.get("bot", "?"))
     reason = entry.get("reason", "")
     if event == "trade":
         emoji = "🟢" if entry.get("action") == "BUY" else "🔴"
-        line = f"{emoji} [{bot}] {entry.get('action')} {entry.get('symbol')} ${entry.get('value', 0):,.0f}"
+        line = (
+            f"{emoji} [{bot}] {_esc(entry.get('action'))} {_esc(entry.get('symbol'))} "
+            f"${entry.get('value', 0):,.0f}"
+        )
     elif event == "rebalance":
-        line = f"📊 [{bot}] Rebalance → {entry.get('target')}"
+        line = f"📊 [{bot}] Rebalance → {_esc(entry.get('target'))}"
     elif event == "circuit_breaker":
         line = f"🚨 [{bot}] Circuit breaker at {entry.get('drawdown', 0):.1%}"
     else:
-        line = f"[{bot}] {event}"
+        line = f"[{bot}] {_esc(event)}"
     if reason:
-        line += f" — {reason}"
+        line += f" — {_esc(reason)}"
     return line
 
 
@@ -106,24 +120,27 @@ class TelegramNotifier:
         journal_event({"event": "trade", "bot": bot, "action": action, "symbol": symbol,
                        "value": value, "reason": reason})
         emoji = "🟢" if action == "BUY" else "🔴" if action == "SELL" else "⚪"
-        msg = f"{emoji} <b>[{bot}] {action} {symbol}</b>\nValue: ${value:,.0f}"
+        msg = f"{emoji} <b>[{_esc(bot)}] {_esc(action)} {_esc(symbol)}</b>\nValue: ${value:,.0f}"
         if reason:
-            msg += f"\nReason: {reason}"
+            msg += f"\nReason: {_esc(reason)}"
         self.send(msg)
 
     def rebalance(self, bot: str, target: str, regime: str, portfolio_value: float, detail: str = "") -> None:
         journal_event({"event": "rebalance", "bot": bot, "target": target, "regime": regime,
                        "value": portfolio_value, "reason": detail})
-        msg = f"📊 <b>[{bot}] Rebalance → {target}</b>\nRegime: {regime}\nPortfolio: ${portfolio_value:,.0f}"
+        msg = (
+            f"📊 <b>[{_esc(bot)}] Rebalance → {_esc(target)}</b>\n"
+            f"Regime: {_esc(regime)}\nPortfolio: ${portfolio_value:,.0f}"
+        )
         if detail:
-            msg += f"\n{detail}"
+            msg += f"\n{_esc(detail)}"
         self.send(msg)
 
     def circuit_breaker(self, bot: str, drawdown: float, portfolio_value: float) -> None:
         journal_event({"event": "circuit_breaker", "bot": bot, "drawdown": drawdown,
                        "value": portfolio_value, "reason": "drawdown limit hit, moved to cash/stable"})
         msg = (
-            f"🚨 <b>[{bot}] CIRCUIT BREAKER TRIGGERED</b>\n"
+            f"🚨 <b>[{_esc(bot)}] CIRCUIT BREAKER TRIGGERED</b>\n"
             f"Drawdown: {drawdown:.1%}\nMoved to cash/stable\nValue: ${portfolio_value:,.0f}"
         )
         self.send(msg)
@@ -141,15 +158,15 @@ class TelegramNotifier:
         human CLI action on the droplet; this message carries the exact command."""
         journal_event({"event": "evolve_proposal", "bot": "Evolve",
                        "proposal_id": proposal_id, "reason": hypothesis})
-        param_lines = "\n".join(f"  {k}: {v}" for k, v in sorted(params.items()))
+        param_lines = "\n".join(f"  {_esc(k)}: {_esc(v)}" for k, v in sorted(params.items()))
         msg = (
-            f"🧬 <b>[Evolve] Promotion proposal {proposal_id}</b>\n"
-            f"Strategy: {strategy_id}\n"
-            f"Hypothesis: {hypothesis}\n"
+            f"🧬 <b>[Evolve] Promotion proposal {_esc(proposal_id)}</b>\n"
+            f"Strategy: {_esc(strategy_id)}\n"
+            f"Hypothesis: {_esc(hypothesis)}\n"
             f"Params:\n{param_lines}\n"
             f"Backtest expectation: CAGR {expected.get('cagr', 0):+.1%}, "
             f"Sharpe {expected.get('sharpe', 0):.2f}, MaxDD {expected.get('max_dd', 0):+.1%}\n"
-            f"Shadow: {shadow_summary}\n"
+            f"Shadow: {_esc(shadow_summary)}\n"
             f"Note: shadow validates plumbing and the drawdown envelope, not alpha — "
             f"statistical confidence comes from the backtest + holdout.\n\n"
             f"Approve:  python main.py evolve approve {proposal_id}\n"
@@ -158,12 +175,12 @@ class TelegramNotifier:
         self.send(msg)
 
     def startup(self, bot: str) -> None:
-        self.send(f"✅ <b>[{bot}]</b> Bot started on DigitalOcean")
+        self.send(f"✅ <b>[{_esc(bot)}]</b> Bot started on DigitalOcean")
 
     def health(self, bot: str, portfolio_value: float, holding: Optional[str], detail: str = "") -> None:
-        msg = f"💓 <b>[{bot}] Daily health</b>\nHolding: {holding or 'CASH'}\nValue: ${portfolio_value:,.0f}"
+        msg = f"💓 <b>[{_esc(bot)}] Daily health</b>\nHolding: {_esc(holding or 'CASH')}\nValue: ${portfolio_value:,.0f}"
         if detail:
-            msg += f"\n{detail}"
+            msg += f"\n{_esc(detail)}"
         self.send(msg)
 
     def daily_report(
@@ -194,12 +211,12 @@ class TelegramNotifier:
             "<b>Holdings</b>",
         ]
         for symbol, market_value, unrealized_pnl in positions:
-            lines.append(f"• {symbol}: ${market_value:,.0f} (P&L {unrealized_pnl:+,.0f})")
+            lines.append(f"• {_esc(symbol)}: ${market_value:,.0f} (P&amp;L {unrealized_pnl:+,.0f})")
         lines.append(f"• Cash: ${cash:,.0f}")
         if bot_lines:
             lines.append("")
             lines.append("<b>Bots</b>")
-            lines.extend(f"• {b}" for b in bot_lines)
+            lines.extend(f"• {_esc(b)}" for b in bot_lines)
         lines.append("")
         lines.append("<b>Today's activity</b>")
         if events:
