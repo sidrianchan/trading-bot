@@ -473,7 +473,30 @@ def cmd_momentum_backtest(config: dict) -> None:
 
 
 def cmd_crypto_paper(config: dict, dry_run: bool = False) -> None:
+    """Start the crypto paper loop. Retired 2026-09-05 — refuses to run by default.
+
+    The backtest command still works; measuring a dead strategy is how it stays dead.
+    """
     from agent.crypto_loop import CryptoPaperLoop
+
+    if not config.get("crypto", {}).get("enabled", False):
+        print(
+            "crypto-paper is RETIRED and will not start.\n"
+            "\n"
+            "  Walk-forward out-of-sample 2021-2024, with Alpaca's real 25 bps taker fee and\n"
+            "  rebalance timing tranched across all seven weekdays:\n"
+            "\n"
+            "      strategy            +12.4% CAGR   Sharpe 0.62   MaxDD -40.0%\n"
+            "      BTC buy & hold      +33.6% CAGR   Sharpe 0.78   MaxDD -76.6%\n"
+            "      38% BTC, untraded   +16.6% CAGR   Sharpe 0.78   MaxDD -38.9%\n"
+            "\n"
+            "  It loses on return, loses on risk-adjusted return, and does not improve\n"
+            "  drawdown. See DECISIONS.md (kill #12).\n"
+            "\n"
+            "  Reproduce:  python scripts/walk_forward_validation.py\n"
+            "  Override:   set crypto.enabled: true in config.yaml — but bring new evidence."
+        )
+        raise SystemExit(1)
 
     loop = CryptoPaperLoop(config)
     if dry_run:

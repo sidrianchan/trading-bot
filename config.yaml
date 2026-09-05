@@ -21,7 +21,13 @@ risk:
 execution:
   order_type: limit                # limit at pattern trigger, never market chase
   slippage_bps: 1                  # 0.01% per side (spread cost)
-  commission_bps: 0                # Alpaca commission-free
+  # Equities/ETFs only. Alpaca charges NO commission on US equities — but it does
+  # charge on crypto (0.15% maker / 0.25% taker below $100k of 30-day volume).
+  # This line read "Alpaca commission-free" with no asset-class qualifier until
+  # 2026-09-05, and the crypto backtests inherited the assumption: at ~52 legs a
+  # year that is 12.2% annually, and it was the whole reported edge. Crypto costs
+  # now live in backtester/costs.py, not here.
+  commission_bps: 0                # US equities/ETFs only — NOT crypto
   cancel_after_bars: 2             # cancel limit if unfilled within 2 trigger bars
   partial_fill_prob: 0.50          # backtest assumption for fast breakouts
 
@@ -124,6 +130,14 @@ momentum_paper:
   capital: 7000
 
 crypto:
+  # RETIRED 2026-09-05. Do not re-enable without new evidence.
+  # Walk-forward OOS 2021-2024, real fees, timing tranched: +12.4% CAGR / Sharpe 0.62
+  # against BTC buy-and-hold at +33.6% / 0.78. It loses on return AND on risk-adjusted
+  # return, and does not improve drawdown either. The 68.9% and 91.1% figures this
+  # config used to produce came from free trading and a fitted Monday rebalance.
+  # Reproduce with: python scripts/walk_forward_validation.py
+  # Full post-mortem: DECISIONS.md, kill #12.
+  enabled: false
   capital: 3000
   universe: [BTC/USD, ETH/USD]
   stable: USDC/USD

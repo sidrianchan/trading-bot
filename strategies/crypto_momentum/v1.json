@@ -9,7 +9,7 @@
     "rel_skip": 14,
     "cb_threshold": -0.4
   },
-  "status": "active",
+  "status": "retired",
   "capital_fraction": 1.0,
   "lineage": {
     "parent": null,
@@ -19,13 +19,15 @@
   "provenance": {
     "backtest_run_id": null,
     "expected": {
-      "cagr": 0.689,
-      "sharpe": null,
-      "max_dd": -0.552
+      "cagr": 0.124,
+      "sharpe": 0.62,
+      "max_dd": -0.4
     },
     "shadow": null,
     "approved_by": null,
-    "approved_at": null
+    "approved_at": null,
+    "retired_at": "2026-09-05",
+    "retired_reason": "Walk-forward OOS 2021-2024 with Alpaca's real 25bps taker fee and rebalance timing tranched across all seven weekdays: +12.4% CAGR / Sharpe 0.62 / -40.0% MDD, against BTC buy-and-hold at +33.6% / 0.78 and a 38% static BTC position at the same volatility at +16.6% / 0.78 / -38.9%. Loses on return and on risk-adjusted return, and does not improve drawdown. The previously recorded 68.9% CAGR and 91.1% walk-forward figures were artefacts of free trading and a fitted Monday rebalance. See DECISIONS.md kill #12."
   },
   "created_at": "2026-07-20T00:54:21.788267+00:00"
 }

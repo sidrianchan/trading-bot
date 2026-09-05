@@ -2,8 +2,19 @@
 
 ## What's live
 
-- **ETF bot** (`momentum-paper`): V4 dual momentum on TQQQ/UPRO/SOXL. Backtest 24.5% CAGR, -67.8% MDD.
-- **Crypto bot** (`crypto-paper`): BTC/ETH absolute + relative momentum. Backtest 68.9% CAGR, -55.2% MDD.
+- **ETF bot** (`momentum-paper`): V4 dual momentum on TQQQ/UPRO/SOXL.
+  Honest walk-forward OOS 2016-2024, costs charged, timing tranched: **+27.7% CAGR, Sharpe 0.75,
+  -52.5% MDD.** Against a 74% TQQQ position held at the same volatility and never traded: gives up
+  7.4pp of annual return, buys 16.2pp less drawdown. Keep as drawdown control, not as alpha.
+- **Crypto bot** (`crypto-paper`): BTC/ETH absolute + relative momentum.
+  Honest walk-forward OOS 2021-2024: **+12.4% CAGR, Sharpe 0.62, -40.0% MDD** against BTC's +33.6%
+  / 0.78. Loses on return *and* on risk-adjusted return. **RETIRED 2026-09-05** — see kill #12.
+  `crypto.enabled: false`, registry record marked `retired`, and `main.py crypto-paper` exits 1 with
+  the comparison table. Stop the deployed unit with
+  `systemctl --user stop trading-crypto && systemctl --user disable trading-crypto`.
+
+  *(Previously advertised as 24.5% and 68.9% CAGR, and 91.1% out-of-sample. Those figures reproduce
+  exactly from the code and are wrong. Kill #12 explains why.)*
 
 ## What was tried and failed (do not rebuild)
 
@@ -160,9 +171,91 @@
   strategy code — the first cross-sectional one included. Same seal; 2020→now still reserved for a
   single final validation.
 
+- **The two live strategies — audited at the measurement stage, 2026-09-05.** Eleven premises had
+  been killed against pre-registered criteria with placebo controls. The two that survived had never
+  been held to the same standard, so they were. Both engines were re-implemented independently and
+  validated to the cent against the originals (max absolute equity difference **0.000000** over
+  2018-2024) before being perturbed. **Verdict: the reported returns were an artefact of three
+  omissions, and the crypto strategy is dead.**
+
+  **(a) Rebalance timing was a fitted parameter, and nobody had noticed it was a parameter.** The
+  crypto engine evaluated on `date.weekday() == 0`. Changing only that, holding everything else
+  identical, moves the walk-forward out-of-sample CAGR:
+
+  | Mon | Tue | Wed | Thu | Fri | Sat | Sun |
+  |---|---|---|---|---|---|---|
+  | **91.1%** | 86.5% | 59.9% | 11.6% | 14.8% | 1.2% | 19.3% |
+
+  Median 19.3%; Monday is best of seven. The ETF engine behaves the same way across the month:
+  42.2% at month end down to 7.1% six trading days earlier, **month end ranking 1 of 11**. Ranking
+  first on an arbitrary choice twice is not luck twice — timing was being selected along with
+  everything else, invisibly, because a walk-forward only protects the parameters it re-selects.
+
+  **(b) Trading was free.** `config.yaml` carried `commission_bps: 0  # Alpaca commission-free`.
+  True for equities, false for crypto: the published schedule is 0.15% maker / 0.25% taker below
+  $100k of 30-day volume. The crypto bot switches almost every Monday — **52 legs a year, 12.2%
+  annually in fees.** With them charged, the fixed live config loses money on all seven weekdays and
+  loses to BTC buy-and-hold on all seven.
+
+  **(c) No benchmark was printed, ever.** Across all **525** parameter combinations at 25 bps on the
+  same 2021-2024 window: min -26.1%, **median -9.4%**, max +94.0%, and only **3.4% beat BTC
+  buy-and-hold**. The reported 91.1% sat near the maximum of its own family's distribution. Deflated
+  Sharpe Ratio at a realistic 100 trials: **71%**, and 63% at 200.
+
+  **The measurement that should have been run first, and now is.** At the same volatility, does the
+  strategy beat the asset it holds, held statically and never traded?
+
+  | | CAGR | Sharpe | Vol | MaxDD |
+  |---|---|---|---|---|
+  | ETF strategy | +27.7% | 0.75 | 48.5% | -52.5% |
+  | 74% TQQQ, never traded | +35.1% | 0.87 | 48.5% | -68.8% |
+  | Crypto strategy | +12.4% | 0.62 | 23.2% | -40.0% |
+  | 38% BTC, never traded | +16.6% | 0.78 | 23.2% | -38.9% |
+
+  The ETF strategy buys 16.2pp of drawdown for 7.4pp of annual return — a real trade, worth making
+  or not, but **not alpha**. The crypto strategy buys nothing: less return, marginally *worse*
+  drawdown, 34 legs a year in fees.
+
+  **What was verified to work.** Volatility targeting at 25-30% takes the ETF strategy from Sharpe
+  0.96 to 1.11 and drawdown -49.7% to -31.3%, and stays flat at 1.08-1.11 across every target level
+  tested. The contrast with the spiky weekday table is the diagnostic worth keeping: **vary one
+  arbitrary choice and plot the answers — a real effect gives a flat line, a fitted one gives a
+  spike.** No statistics required.
+
+  **Fixed in code, same day:** `backtester/costs.py` (real costs are the default; a free backtest
+  must be requested by name); `run_crypto_tranched` / `run_dual_momentum_tranched` (one sub-account
+  per rebalance day at 1/N capital — averages timing luck away instead of harvesting it, and is
+  implementable live); `scripts/walk_forward_validation.py` rewritten to re-select **every** free
+  parameter per window and to print a volatility-matched static benchmark beside every result;
+  benchmark-relative gates replacing absolute thresholds that a levered ETF's beta clears on its
+  own; `tests/test_costs.py` covering both bugs.
+
+  **Do not re-enable `evolve/`** until its trial counter is global and persistent and its gate is a
+  Deflated Sharpe Ratio. An LLM proposing candidates into an automated validator manufactures
+  trials faster than they can be audited, aimed squarely at the failure above.
+
+  **Twelve premises now measured; twelve rejected as sources of return.** The eleven before this
+  were all price-pattern rules on daily or intraday bars of liquid large-caps — the most heavily
+  mined dataset in finance. Bajgrowicz & Scaillet (JFE 2012) tested 7,846 such rules on the Dow from
+  1897 to 2011 and found none survives transaction costs. This repository is an independent
+  small-scale replication of that result, with placebo controls. **Stop searching this drawer.**
+
 ## Next review date
 
 June 30, 2026 — 30-day paper trading results. Live capital discussion only after this date.
+
+## Standing rules, added 2026-09-05
+
+1. **No figure without a benchmark.** A CAGR alone is not a result. Print the asset held, buy-and-
+   hold, and that asset held at the strategy's own volatility with no trading.
+2. **No backtest without costs.** The default is the real fee. Zero-cost runs are for measuring how
+   much the costs are worth, and must be asked for by name.
+3. **Never select a nuisance parameter — average over it.** Weekday, day-of-month, open vs close.
+   If the answer depends on it, tranche it.
+4. **Perturb before believing.** Vary one arbitrary choice and plot the answers. Flat is real,
+   spiky is fitted.
+5. **Count every trial, forever.** Including the ones abandoned mentally. The correction is only as
+   honest as the count.
 
 ## Intraday bot status
 
