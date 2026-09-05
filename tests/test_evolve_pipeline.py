@@ -188,7 +188,11 @@ def test_validate_candidate_on_synthetic_prices():
     )
     # Structural assertions — synthetic data need not pass the gates
     assert isinstance(result.ok_backtest, bool)
-    assert len(result.gates) == 4
+    # Assert on gate identity, not count: gates get added (a benchmark-relative one
+    # landed 2026-09-05) and a hardcoded length makes that a test failure instead of
+    # the improvement it is.
+    gate_names = {g["gate"] for g in result.gates}
+    assert {"Sharpe > TQQQ buy & hold", "CAGR > 20%", "Sharpe > 0.5"} <= gate_names
     assert result.selection_metrics and result.holdout_metrics
     # candidate == incumbent, so the rising bar must fail it (bar = own sharpe + 0.10)
     assert result.candidate_sharpe == pytest.approx(result.incumbent_sharpe)
